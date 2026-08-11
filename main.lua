@@ -185,7 +185,6 @@ return function(mod)
       choices = { { "INSET", "inset" }, { "MARGIN", "margin" }, { "OFF", "off" } } },
     { key = "side", label = "SIDE", type = "choice", default = "left",
       choices = { { "LEFT", "left" }, { "RIGHT", "right" } } },
-    { key = "battle", label = "IN BATTLE", type = "toggle", default = false },
   })
 
   local function opt(key, fallback)
@@ -454,8 +453,15 @@ return function(mod)
     return false
   end
 
+  -- Portraits are an OVERWORLD feature, full stop. A trainer's pre- and
+  -- post-battle speech both happen out here -- the battle state pushes after
+  -- the challenge and pops before the defeat line -- so those are ordinary
+  -- overworld boxes and get a portrait like any other. Text drawn while a
+  -- battle is actually on the stack does not, and there is no option to turn
+  -- that on: the speaker lookup has no battle-aware path, so it would tag
+  -- every move and faint message with whichever trainer the overworld last
+  -- knew about, and INSET would cut battle text to 12 columns on top of that.
   local function allowed(game)
-    if opt("battle", false) then return true end
     return not battleActive(game)
   end
 
@@ -548,8 +554,10 @@ return function(mod)
   --
   -- TextBox is a plain module table behind package.loaded, so the engine's own
   -- `require` hands back the table these two lines replace fields on -- every
-  -- call site picks the wrappers up, including the ones in battle. The guard
-  -- keeps a hot reload from stacking a second layer on the first.
+  -- call site picks the wrappers up, including the ones in battle, which is
+  -- why `allowed()` filters those out rather than the wrapper being scoped to
+  -- the overworld. The guard keeps a hot reload from stacking a second layer
+  -- on the first.
 
   if not TextBox.dp_wrapped then
     TextBox.dp_wrapped = true

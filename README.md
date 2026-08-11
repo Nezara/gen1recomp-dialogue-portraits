@@ -9,7 +9,11 @@ the dialogue box.
 |---|---|---|
 | `PORTRAIT` | **INSET** / MARGIN / OFF | Where the portrait goes |
 | `SIDE` | **LEFT** / RIGHT | Which side of the screen |
-| `IN BATTLE` | on / **off** | Portraits during battle text too |
+
+Portraits are an overworld feature. A trainer's pre- and post-battle speech
+both happen out in the overworld — the battle pushes after the challenge and
+pops before the defeat line — so both get a portrait like any other box. Text
+drawn during the battle itself never does.
 
 ### INSET
 

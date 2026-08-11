@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.2
+
+Removed the `IN BATTLE` option. It was never meant to exist — portraits are
+an overworld feature.
+
+- Nothing changes about trainers. Their pre- and post-battle speech both
+  happen in the overworld (the battle state pushes after the challenge and
+  pops before the defeat line), so both still get a portrait exactly as
+  before. Only text drawn while a battle is actually on the stack is affected,
+  and that was already off by default.
+- Turning it on was never really viable anyway, which is the reason it's gone
+  rather than just re-defaulted: speaker resolution has no battle-aware path,
+  so it tagged every move, faint and item message with whichever trainer the
+  overworld last knew about, and INSET cut battle text to 12 columns on top of
+  that.
+- `allowed()` is now just `not battleActive(game)`.
+
 ## 0.4.1
 
 Fixed the rival showing no portrait during Oak's Lab, reported after 0.4.0.
