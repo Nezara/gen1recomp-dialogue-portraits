@@ -443,12 +443,48 @@ return function(mod)
   end
 
   -- ------- state queries
+  --
+  -- Identify a state by its CLASS, not by a marker flag on it.
+  --
+  -- `isOverworld` is real -- OverworldController.lua declares
+  -- `{ isOpaque = true, isOverworld = true }` and WorldAPI scans the stack
+  -- for it -- which is why overworldOf() above can use it. But there is no
+  -- equivalent for text boxes or battles: `isTextBox` and `isBattle` do not
+  -- exist in this engine build at all, so testing them silently matched
+  -- nothing, forever.
+  --
+  -- That is precisely why MARGIN drew nothing while INSET was fine. INSET
+  -- draws from `self` inside the TextBox.draw wrapper and never has to find
+  -- the box on the stack; MARGIN runs from a render hook and has to look it
+  -- up, so it hit the dead flag every frame. The same dead-flag bug made
+  -- battleActive() always return false, meaning the battle suppression this
+  -- mod has always claimed was never actually doing anything.
+  --
+  -- Every state here is a plain metatable-backed class -- `setmetatable({},
+  -- Klass)` with `Klass.__index = Klass` -- so comparing an instance's
+  -- metatable against the class table is exact and needs no cooperation from
+  -- the engine. The marker flag is still checked first, so this keeps working
+  -- unchanged on newer builds that do define one (upstream has since added
+  -- `isTextBox`).
+  local function isA(state, klass, flag)
+    if type(state) ~= "table" then return false end
+    if flag and state[flag] then return true end
+    return klass ~= nil and getmetatable(state) == klass
+  end
+
+  -- Resolved once, lazily and defensively: a build that moves or renames this
+  -- module should degrade to "never in battle" rather than throw on load.
+  local BattleClass
+  do
+    local ok, klass = pcall(require, "src.battle.BattleState")
+    if ok then BattleClass = klass end
+  end
 
   local function battleActive(game)
     local states = game and game.stack and game.stack.states
     if not states then return false end
     for i = #states, 1, -1 do
-      if states[i].isBattle then return true end
+      if isA(states[i], BattleClass, "isBattle") then return true end
     end
     return false
   end
@@ -466,12 +502,14 @@ return function(mod)
   end
 
   -- Only the top of the stack counts: a `stay` box left sitting under a menu
-  -- (the Viridian school blackboard) is not the conversation on screen.
+  -- (the Viridian school blackboard) is not the conversation on screen. Three
+  -- deep, so a YES/NO ChoiceBox pushed on top of its own text box still finds
+  -- the box underneath it.
   local function topTextBox(game)
     local states = game and game.stack and game.stack.states
     if not states then return nil end
     for i = #states, math.max(1, #states - 2), -1 do
-      if states[i].isTextBox then return states[i] end
+      if isA(states[i], TextBox, "isTextBox") then return states[i] end
     end
     return nil
   end
@@ -490,6 +528,32 @@ return function(mod)
     local dy = y + math.floor((h - art.h * scale) / 2)
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(art.image, dx, dy, 0, scale, scale)
+  end
+
+  -- ------- TEMPORARY margin diagnostics
+  --
+  -- Set DIAG = false (or delete this block and its three call sites) once the
+  -- MARGIN problem is settled. Writes to <savedir>/dialogue_portraits.log.
+  --
+  -- Everything MARGIN needs was verified against the engine source and checks
+  -- out: `render.hud` is a real hook called unconditionally from Game:draw()
+  -- on every platform, its viewport really does carry gameX/gameY/gameWidth/
+  -- gameHeight/width, TextBox really does set `isTextBox` and really is
+  -- pushed onto game.stack, and Hooks:wrap has no allowlist or permission
+  -- gate. So the break is runtime-only, and every failure mode in this path
+  -- is silent (two early returns plus a pcall). This logs each gate in order
+  -- so one run says which one it is.
+  local DIAG = true
+  local diagFrames, diagLogAt, diagDrawAt = 0, -math.huge, -math.huge
+
+  local function dlog(fmt, ...)
+    if not DIAG then return end
+    local ok, line = pcall(string.format, fmt, ...)
+    if not ok then line = tostring(fmt) end
+    pcall(function()
+      love.filesystem.append("dialogue_portraits.log",
+        os.date("!%H:%M:%S ") .. line .. "\n")
+    end)
   end
 
   local function drawInsetPanel(box)
@@ -523,31 +587,92 @@ return function(mod)
     love.graphics.setColor(1, 1, 1, 1)
   end
 
+  -- The dialogue box is the bottom 6 of the 18 tile rows (BOX_TY = 12), so
+  -- its top edge sits 12/18 of the way down the play area. Needed to place a
+  -- tucked-in portrait ABOVE the text rather than across it.
+  local BOX_TOP_FRAC = 12 / 18
+
   local function drawMarginPanel(vp, art)
     -- GB pixels -> window units. gameWidth is the letterbox, so this tracks
     -- window size and integer scale without reading the renderer.
     local unit = (vp.gameWidth or 0) / 160
     if unit <= 0 then return end
-    local w, h = art.w * art.mag * unit, art.h * art.mag * unit
-    local pad = 4 * unit
-    local x
-    if opt("side", "left") == "right" then
-      x = vp.gameX + vp.gameWidth + pad
-      -- no room out there: tuck it just inside the play area instead
-      if x + w + pad > vp.width then x = vp.gameX + vp.gameWidth - w - pad end
+
+    local side  = opt("side", "left")
+    local pad   = 2 * unit   -- breathing room around the panel
+    local frame = 1 * unit   -- the drawn border
+
+    -- How much room actually exists outside the play area on that side. The
+    -- old code never asked: it drew at art.mag * unit unconditionally and,
+    -- when that overflowed, jumped straight to tucking the panel inside the
+    -- play area at the BOTTOM -- i.e. directly over the dialogue box, which
+    -- is the one thing this layout exists to avoid. At 1024x768 the play area
+    -- is 800 wide, leaving a 112px margin, while a 30px portrait at unit=5
+    -- wanted 150px, so that fallback fired every time.
+    local marginW = (side == "right")
+      and (vp.width - (vp.gameX + vp.gameWidth))
+      or  vp.gameX
+
+    -- Draw at the GAME's own pixel scale, always. Anything smaller reads as
+    -- a shrunken thumbnail sitting next to full-size art rather than as a
+    -- portrait: INSET puts its 30x30 crop at 1x inside the GB canvas and the
+    -- renderer blows it up with everything else, so it lands at 30*unit on
+    -- screen (150px at unit=5). MARGIN has to match that number or the two
+    -- layouts disagree about how big the same picture is.
+    --
+    -- Fitting the art to the margin instead was the previous attempt, and it
+    -- is why this looked tiny: at 1024x768 the play area is 800 wide, so the
+    -- margin is only 112px and the best WHOLE fit is 2x -- against a game
+    -- drawing at 5x. The margin's width is a fact about the window, not a
+    -- budget the portrait should shrink into.
+    local scale = math.max(1, math.floor(art.mag * unit))
+    local w, h  = art.w * scale, art.h * scale
+    local need  = w + 2 * frame + 2 * pad
+
+    local x, y
+    if marginW >= need then
+      -- Genuinely fits beside the play area (widescreen). Centre it in the
+      -- margin, bottom-aligned with the play area like the box beside it.
+      local centre = (side == "right")
+        and (vp.gameX + vp.gameWidth + marginW / 2)
+        or  (marginW / 2)
+      x = centre - w / 2
+      y = vp.gameY + vp.gameHeight - h - pad
     else
-      x = vp.gameX - w - pad
-      if x < pad then x = vp.gameX + pad end
+      -- Margin too narrow at full size. Keep the scale and MOVE instead of
+      -- shrinking: sit above the dialogue box, straddling the play area's
+      -- edge so it soaks up whatever margin does exist and covers as little
+      -- of the world as possible. Overlapping the world is a fair trade;
+      -- overlapping the text is the one thing this layout exists to prevent.
+      if side == "right" then
+        x = math.min(vp.width - w - frame - pad, vp.gameX + vp.gameWidth - w / 2)
+      else
+        x = math.max(frame + pad, vp.gameX - w / 2)
+      end
+      y = vp.gameY + vp.gameHeight * BOX_TOP_FRAC - h - pad
+      if y < vp.gameY + pad then y = vp.gameY + pad end
     end
-    local y = vp.gameY + vp.gameHeight - h - pad
-    local bx, by, bw, bh = x - 2 * unit, y - 2 * unit, w + 4 * unit, h + 4 * unit
+
+    -- Whole pixels, so the art lands on the device grid.
+    x, y = math.floor(x + 0.5), math.floor(y + 0.5)
+    local bx, by, bw, bh = x - frame, y - frame, w + 2 * frame, h + 2 * frame
+    if DIAG then
+      local t = now()
+      if (t - diagDrawAt) >= 2 then
+        diagDrawAt = t
+        dlog("  DRAWING margin: unit=%.2f marginW=%.0f need=%.0f scale=%d art=%dx%d -> panel x=%.0f y=%.0f w=%.0f h=%.0f (playfield x=%s..%s, window %sx%s)",
+             unit, marginW, need, scale, art.w, art.h, bx, by, bw, bh,
+             tostring(vp.gameX), tostring(vp.gameX + vp.gameWidth),
+             tostring(vp.width), tostring(vp.height))
+      end
+    end
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.rectangle("fill", bx, by, bw, bh)
     love.graphics.setColor(0, 0, 0, 1)
-    love.graphics.setLineWidth(math.max(1, unit))
+    love.graphics.setLineWidth(math.max(1, frame))
     love.graphics.rectangle("line", bx, by, bw, bh)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(art.image, x, y, 0, art.mag * unit, art.mag * unit)
+    love.graphics.draw(art.image, x, y, 0, scale, scale)
   end
 
   -- ------- the seams
@@ -616,6 +741,11 @@ return function(mod)
 
       box.dp_art = art
       box.dp_panelTx = panelTx
+      -- Not throttled: text boxes are rare compared to frames, and the whole
+      -- question is whether a box with art ever coexists with a hud frame
+      -- that can see it. Compare these timestamps against the hud# lines.
+      dlog("TextBox.new style=%q art=%s panelTx=%s -- box built",
+           tostring(style), art and "YES" or "no", tostring(panelTx))
       return box
     end
 
@@ -635,12 +765,65 @@ return function(mod)
   -- box rather than being called by it.
   mod.hooks:wrap("render.hud", function(next_, game, viewport)
     next_(game, viewport)
+
+    -- Gate-by-gate trace. Throttled to one line per 2s (plus the first three
+    -- frames) so a 60fps hook doesn't write a 100MB log.
+    if DIAG then
+      diagFrames = diagFrames + 1
+      local t = now()
+      if diagFrames <= 3 or (t - diagLogAt) >= 2 then
+        diagLogAt = t
+        local okBox, box = pcall(topTextBox, game)
+        -- Is `game.stack.states` even the right path? INSET would never
+        -- notice if it weren't: speakerFor falls through to the event-based
+        -- lastNpc memory, and battleActive returning false just reads as
+        -- "not in a battle". So dump the stack itself, not just the lookup.
+        local stackInfo = "stack=NIL"
+        pcall(function()
+          local st = game and game.stack
+          if not st then return end
+          local states = st.states
+          if type(states) ~= "table" then
+            stackInfo = string.format("stack=yes states=%s", type(states))
+            return
+          end
+          local parts = {}
+          for i = #states, math.max(1, #states - 3), -1 do
+            local s = states[i] or {}
+            local flags = {}
+            if isA(s, TextBox, "isTextBox") then flags[#flags + 1] = "TextBox" end
+            if s.isOverworld then flags[#flags + 1] = "Overworld" end
+            if isA(s, BattleClass, "isBattle") then flags[#flags + 1] = "Battle" end
+            parts[#parts + 1] = string.format("[%d]%s", i,
+              #flags > 0 and table.concat(flags, "+") or "?")
+          end
+          local topOk, topS = pcall(function() return st.top and st:top() end)
+          stackInfo = string.format("n=%d %s topIsTextBox=%s", #states,
+            table.concat(parts, " "),
+            (topOk and topS and topS.isTextBox) and "yes" or "no")
+        end)
+        dlog("hud#%d style=%q vp=%s topTextBox=%s dp_art=%s | %s",
+             diagFrames, tostring(opt("style", "inset")),
+             viewport and string.format("gameX=%s gameY=%s gameW=%s gameH=%s win=%sx%s",
+               tostring(viewport.gameX), tostring(viewport.gameY),
+               tostring(viewport.gameWidth), tostring(viewport.gameHeight),
+               tostring(viewport.width), tostring(viewport.height)) or "NIL",
+             (okBox and box) and "found" or "none",
+             (okBox and box and box.dp_art) and "yes" or "no",
+             stackInfo)
+      end
+    end
+
     if opt("style", "inset") ~= "margin" then return end
     if not viewport then return end
     local box = topTextBox(game)
     if not (box and box.dp_art) then return end
-    pcall(drawMarginPanel, viewport, box.dp_art)
+    local ok, err = pcall(drawMarginPanel, viewport, box.dp_art)
+    if not ok then dlog("  drawMarginPanel THREW: %s", tostring(err)) end
   end)
+
+  dlog("=== dialogue_portraits loaded, render.hud wrap registered (style=%q) ===",
+       tostring(opt("style", "inset")))
 
   -- Exported so a companion mod (or a test) can ask the same questions this
   -- one asks, rather than re-deriving them from the world.

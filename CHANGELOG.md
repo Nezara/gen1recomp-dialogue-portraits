@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.4.3
+
+Fixed MARGIN drawing nothing, reported after 0.4.2. Two real bugs, both
+tracing to the same root cause.
+
+- **Root cause: `state.isTextBox` and `state.isBattle` do not exist in this
+  engine build.** Confirmed by unzipping the shipped `gen1recomp.exe` (a
+  fused LÖVE archive) and grepping its actual `src/` -- both flags are absent
+  from the 2026-08-04 build this project runs on; `isTextBox` only exists on
+  GitHub `main`, added after that build. `isOverworld` IS real (declared in
+  `OverworldController.lua`), which is why that one worked and masked the
+  other two being dead.
+- **MARGIN drawing nothing**: `topTextBox()` scanned the stack for
+  `state.isTextBox`, which never matched, so it always returned nil and bailed
+  before drawing -- silently, since the whole hook is one big early-return.
+  INSET never hit this because it draws from `self` inside the wrapped
+  `TextBox.draw`, with no need to find the box on the stack.
+- **Battle suppression never worked**: `battleActive()` had the identical bug
+  against `state.isBattle`, always returning false. The `IN BATTLE` option
+  removed in 0.4.2 was already inert before that release -- toggling it never
+  did anything on this build.
+- **Fix**: identify states by CLASS instead of by marker flag. Both `TextBox`
+  and `BattleState` are plain `setmetatable({}, Klass)` classes, so
+  `getmetatable(state) == Klass` is exact and needs no cooperation from the
+  engine. The marker flag is still checked first, so this keeps working
+  unchanged on a newer build that does define one.
+- **Also fixed, found once MARGIN could actually draw**: it was placing the
+  portrait by shrinking to fit whatever margin existed, landing at 2x (60px)
+  against INSET's 150px at the default 1024x768 window -- correct geometry,
+  wrong tradeoff. It now always draws at the game's own pixel scale (matching
+  INSET's size exactly) and, only when the margin is too narrow to hold that,
+  moves the portrait above the dialogue box instead of shrinking it. See the
+  README's MARGIN section for the sizing tradeoff this implies.
+- Diagnostic logging added while chasing this (`dialogue_portraits.log`,
+  behind a `DIAG` flag near the top of `main.lua`) is left in for now.
+
 ## 0.4.2
 
 Removed the `IN BATTLE` option. It was never meant to exist — portraits are

@@ -32,12 +32,25 @@ completely alone — full width, same wrapping, byte-identical to vanilla.
 ### MARGIN (currently broken, will fix in next release)
 
 Paints the portrait out in the letterbox beside the play area, so the dialogue
-box keeps all 18 columns. If the window is too narrow to have a margin, it
-tucks inside the play area instead.
+box keeps all 18 columns. It always draws at the same pixel scale as the game
+itself — the same size INSET's crop would appear at — rather than shrinking to
+fit whatever margin exists.
+
+That means how it looks depends on window size. At a wide enough window
+(roughly 1280px+) there's enough letterbox for it to sit fully beside the play
+area, and this is MARGIN at its best: full-width text and a clean, dedicated
+spot for the portrait. At a narrower window (1024x768 default) the margin
+usually isn't wide enough to hold the portrait at full size, so it moves
+instead of shrinking — sitting just above the dialogue box, straddling the
+play area's edge. It still never covers the text, but it can cover some of the
+world behind it.
 
 Because this draws over the finished frame rather than into the Game Boy
-canvas, it does not get the palette or the LCD grid — it reads as an overlay
-sitting next to the game rather than as part of it.
+canvas, it does not get the palette or the LCD grid either way — it reads as
+an overlay sitting next to the game rather than as part of it. Given that,
+INSET is the more consistently polished choice at typical window sizes; MARGIN's
+real advantage — not losing six text columns — is most worth it once the
+window is wide enough for it to sit cleanly in the letterbox.
 
 ## Which picture you get
 
