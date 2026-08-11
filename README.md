@@ -1,4 +1,5 @@
 # Dialogue Portraits
+-- Created with AI/Vibe Coded --
 
 A face beside the words. Talk to someone and their portrait appears next to
 the dialogue box.
