@@ -16,7 +16,7 @@ both happen out in the overworld — the battle pushes after the challenge and
 pops before the defeat line — so both get a portrait like any other box. Text
 drawn during the battle itself never does.
 
-### INSET
+### INSET 
 
 Takes six tiles off the left (or right) of the dialogue box and puts a framed
 Game Boy panel there. It is drawn inside the 160x144 canvas, so it gets the
@@ -29,7 +29,7 @@ conversations run to more pages.
 A box with no identifiable speaker, or whose speaker has no portrait, is left
 completely alone — full width, same wrapping, byte-identical to vanilla.
 
-### MARGIN
+### MARGIN (currently broken, will fix in next release)
 
 Paints the portrait out in the letterbox beside the play area, so the dialogue
 box keeps all 18 columns. If the window is too narrow to have a margin, it
