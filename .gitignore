@@ -1,0 +1,10 @@
+# Verbatim ROM extract, kept locally as a scratch source for hand-editing.
+# Reproducible from any Red ROM via the engine's own extractor, so there is
+# nothing here worth versioning -- and it is the one folder that is a
+# straight copy of Nintendo's art rather than a derivative work.
+art/trainers_raw/
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store
