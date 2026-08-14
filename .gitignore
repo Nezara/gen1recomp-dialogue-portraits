@@ -3,6 +3,11 @@
 # nothing here worth versioning -- and it is the one folder that is a
 # straight copy of Nintendo's art rather than a derivative work.
 art/trainers_raw/
+art/pokemon_raw/*.png
+
+# Stray duplicate of art/trainers_new/ that showed up locally -- not part
+# of the pipeline, not versioned.
+art/trainer fixed/
 
 # OS junk
 Thumbs.db

@@ -1,7 +1,7 @@
 {
   "id": "dialogue_portraits",
   "name": "Dialogue Portraits",
-  "version": "0.4.3",
+  "version": "1.0.0",
   "github": "Nezara/gen1recomp-dialogue-portraits",
   "api": 2,
   "entry": "main.lua",
@@ -16,5 +16,5 @@
   "permissions": [
     "engine_internals"
   ],
-  "description": "Shows a portrait of whoever is talking, next to the dialogue box. INSET steals six tiles from the left of the box for a framed Game Boy panel; MARGIN paints the art out in the letterbox and leaves the box alone. Art is a pre-cropped, tightly-framed bust of the ROM's own battle portraits for the ~45 trainer classes and a curated list of story characters, tinted with BROWNMON (a real, saturated palette from the game's own data) -- nobody else gets a portrait unless a PNG is dropped in portraits/, which always wins. Speaker detection reads the dialogue's own \"NAME: \" prefix first when the ROM's text has one (e.g. \"OAK: \", \"{RIVAL}: \"), then the running map script's own NPC, then the player's facing cell -- so scripted encounters and mid-script speaker changes are covered, not just plain talk."
+  "description": "Shows a portrait of whoever is talking, next to the dialogue box. INSET puts the art inside the box in four of its own columns, leaving the text 14 (LEFT) or 13 (RIGHT); FRAMED gives it a bordered Game Boy panel of its own beside the box, at 12; MARGIN paints the art out in the letterbox and leaves the box alone. SIDE = AUTO puts the face on whichever side of the screen the player turned towards. Art is a pre-cropped, tightly-framed bust of the ROM's own battle portraits for all 45 trainer classes and a curated list of story characters, plus hand-drawn portraits for the 28 Pokémon with a talking overworld line (mirrored to face the text on whichever side they land), all tinted with BROWNMON (a real, saturated palette from the game's own data) -- nobody else gets a portrait unless a PNG is dropped in portraits/, which always wins. Speaker detection reads the dialogue's own \"NAME: \" prefix first when the ROM's text has one (e.g. \"OAK: \", \"{RIVAL}: \"), then the running map script's own NPC, then the player's facing cell -- so scripted encounters and mid-script speaker changes are covered, not just plain talk."
 }

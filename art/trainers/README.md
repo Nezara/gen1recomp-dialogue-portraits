@@ -78,3 +78,34 @@ past the frame), re-crop that single file by hand rather than changing the
 fractions for everyone else. Same goes for color — swap `$c0`..`$c3` for a
 different sourced palette (see `red/data/generated/palettes.lua`) and rerun,
 or hand-edit one file that doesn't read well.
+
+**All 45 are now hand-edited masters in `../trainers_new/`**, not the raw
+automated crop above — that script only matters if starting over from a
+fresh ROM extract. To regenerate this folder from the current masters
+instead, drop the crop step (they're already 30x30) and recolor only:
+
+```powershell
+Add-Type -AssemblyName System.Drawing
+$srcDir = "<this mod>\art\trainers_new"
+$outDir = "<this mod>\art\trainers"
+$c0 = @(255,239,255); $c1 = @(230,165,123); $c2 = @(173,115,74); $c3 = @(25,16,16)
+
+foreach ($f in Get-ChildItem $srcDir -Filter *.png) {
+  $img = [System.Drawing.Bitmap]::FromFile($f.FullName)
+  $out = New-Object System.Drawing.Bitmap($img.Width, $img.Height)
+  for ($y = 0; $y -lt $img.Height; $y++) {
+    for ($x = 0; $x -lt $img.Width; $x++) {
+      $px = $img.GetPixel($x, $y)
+      if ($px.R -gt 211) { $col = $c0 } elseif ($px.R -gt 127) { $col = $c1 }
+      elseif ($px.R -gt 43) { $col = $c2 } else { $col = $c3 }
+      $out.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($px.A, $col[0], $col[1], $col[2])) | Out-Null
+    }
+  }
+  $out.Save((Join-Path $outDir $f.Name), [System.Drawing.Imaging.ImageFormat]::Png)
+  $out.Dispose(); $img.Dispose()
+}
+```
+
+Same one-way caveat as before: this is not safely re-runnable on its own
+output, so `../trainers_new/` is the only copy to edit. This is also the
+script `../pokemon_new/` uses (see `../pokemon/README.md`).

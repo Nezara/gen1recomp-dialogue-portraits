@@ -1,5 +1,149 @@
 # Changelog
 
+## 1.0.0
+
+Portraits for the Pokémon standing around in towns and houses, and a decision
+about Bill.
+
+- **All 45 trainer portraits are now the hand-edited masters**, not the
+  original automated crop — `art/trainers_new/` went from 23/45 to 45/45,
+  and `art/trainers/` was regenerated from it the same way.
+- **Pokémon portraits flip to face the text.** The masters are drawn facing
+  left, correct for the default right-side placement; `main.lua` now tags
+  every image loaded from `art/pokemon/` as `directional` and mirrors it
+  horizontally — in `blitArt` (INSET/FRAMED) and `drawMarginPanel` (MARGIN)
+  — whenever the box actually lands on the left, whether from `SIDE = auto`
+  or a player-forced left. Trainer art is a front-on battle pose with no
+  facing to get wrong, so it's never flipped.
+- **Fixed: INSET/FRAMED could stall a scripted cutscene on an unwanted
+  A-press.** Reported as "MARGIN auto-advances Oak's PALLET TOWN 'Hey!
+  Wait!' bubble but the other two modes wait for input" — backwards from
+  how it reads: MARGIN was the one behaving correctly, and INSET/FRAMED
+  were the bug. That box is built with `opts.auto` (a timer that pops it
+  once typing finishes, `data/scripts/story2.lua`), and at 18 cols its
+  text is 2 lines with no CONT — MARGIN never narrows, so it matches
+  vanilla and the timer fires untouched. INSET (14 cols) and FRAMED (12)
+  narrow it enough that "OAK: Hey! Wait!" no longer fits on one line,
+  wrapping the page to 3+ lines the 0.5.0 narrowing fix (`keepPageWaits`)
+  then dutifully protected with a synthetic CONT wait — which blocks
+  `TextBox:update` from ever reaching `self.done`, so the box sits there
+  until the player presses A, something the un-narrowed original never
+  asked for and the auto-timer never expects. `TextBox.new`'s wrapper now
+  skips that injection for any `opts.auto` box, except `auto.wait` ones
+  (the pet-cry boxes, which fall through to an ordinary A/B-gated box once
+  done and still want the protection). Same class of bug likely affects
+  other `opts.auto` boxes with borderline-length lines (trade animation,
+  Hall of Fame, party menu, ...) wherever they pick up a portrait.
+
+- **Talking Pokémon NPCs now resolve to a species.** 29 map objects across 26
+  species — the Fan Club's PIKACHU and SEEL, Mr. Fuji's PSYDUCK and NIDORINO,
+  the Fuchsia warden's yard, both PIDGEY houses, Cerulean's SLOWBRO, the two
+  route-blocking SNORLAX. **The species is not in the sprite**: five overworld
+  sprites cover all of them, and SPRITE_BIRD alone is SPEAROW, PIDGEY,
+  PIDGEOT, FEAROW, DODUO and three legendary birds. It *is* in the object's
+  own `name` (`CELADONMANSION1F_MEOWTH`, `FUCHSIACITY_LAPRAS`), so the rule is
+  "drop the map prefix, ask `game.data.pokemon` whether the rest is a
+  species" — a lookup, not a guess, and correct for objects this mod has never
+  seen. The file then comes from that species' own `spriteFront`, exactly how
+  a trainer's comes from its class's `pic`.
+- **It declines correctly with no exclusion list.** Copycat's room has three
+  *dolls* on the same three sprites (`COPYCATSHOUSE2F_BIRD`/`_FAIRY`/
+  `_MONSTER`, "it's only a doll!") and "BIRD" is not a species, so they get
+  nothing. Neither do the Power Plant's `POWERPLANT_VOLTORB1..6`, whose
+  trailing digit is deliberately not stripped. Verified by running the rule
+  over all 916 map objects: 34 resolve, 0 false positives.
+- **Three names the ROM doesn't spell as its own species key** are hand-mapped:
+  Pewter's bare `NIDORAN` is **NIDORAN_M**, confirmed from the ported script's
+  `play_cry` row rather than guessed, and `NIDORANF`/`NIDORANM` map to
+  `NIDORAN_F`/`NIDORAN_M`.
+- **Bill is one of four Pokémon, rolled per save and kept.** He is a Pokémon
+  when you first meet him and the game never says which — his object is the
+  generic `SPRITE_MONSTER` that fifteen unrelated objects share, so unlike
+  every other portrait here his species is a choice, not a recovery. Rather
+  than pick one, he rolls **RHYDON, CLEFAIRY, NIDORAN_M or KABUTO**, reflecting
+  what different media have made him. Stored via `Flags` with the value in the
+  key (`DP_BILL_FORM_KABUTO`) — `save.modData` did not survive reloads in live
+  testing, while `save.flags` is part of the save format proper, which also
+  makes the roll automatically per-save-file. Rolled with `love.math.random`,
+  never `math.random`, which is the global RNG the engine also rolls battles
+  and encounters on. Caveat inherited from the save format: it becomes
+  permanent when the player next saves.
+- **New art folders**, mirroring the trainer pipeline exactly:
+  `art/pokemon_raw/` (verbatim ROM front sprites, gitignored),
+  `art/pokemon_new/` (grayscale masters, the editable copy),
+  `art/pokemon/` (BROWNMON-recolored, what the mod loads). Same
+  edit-in-grayscale-recolor-last rule, same one-way recolor.
+  **The trainer set's batch crop does not transfer** — Pokémon front art is
+  40x40, 48x48 or 56x56 rather than a uniform 56, and the creature fills it,
+  so only 3 of 28 fit the 32x32 slot at 1x. Per-species measurements are in
+  `art/pokemon_raw/README.md`. **All 28 wanted species now have hand-drawn
+  masters and are recolored into `art/pokemon/`.**
+- Art loading is cached per full path rather than per basename, so the
+  trainer and Pokémon folders can't collide on a name.
+
+## 0.5.0
+
+Three reported bugs, plus the requested auto side. The first and third were
+both really the same thing — squeezing the box to 12 columns and then leaving
+the engine to cope with text that was never written for 12 columns.
+
+- **INSET no longer draws its own frame; the portrait goes inside the dialogue
+  box's.** Through 0.4.3 it took six tiles for a separate 6x6 panel, four of
+  which were two frames drawn back to back — the panel's own and the box's.
+  Sharing one frame buys the same 32x32 of art for four columns instead of
+  six, so the text keeps **14 columns (LEFT) or 13 (RIGHT)** rather than 12.
+  The box also stays full width now, and only its `maxCols` and text pen
+  change, so it draws its ordinary vanilla frame.
+- **The framed panel is still available, as `PORTRAIT = FRAMED`.** Same
+  geometry 0.4.3 had — a separate 6x6 window beside the box, 12 columns of
+  text — so this is a preference now rather than a replacement. It does not
+  have INSET's one asymmetry: its panel sits outside the box the blinking ▼
+  is measured against, so both sides get the same 12 columns. It does carry
+  the full 88 mid-word breaks that 12 columns implies, against INSET's 25.
+  Both layouts get the page-wait fix below.
+- **Fixed: punctuation next to a long word broke the line.** At 12 columns the
+  engine's wrapper has to hard-cut any word of 13+ characters mid-word
+  (`TextBox.paginate`'s `pushLine` falls back to a glyph-boundary cut when no
+  space fits), and "a 12-letter word plus its comma" is exactly 13. Running
+  the whole ROM's dialogue through the engine's own wrapping rule: **88
+  mid-word cuts at 12 columns, 25 at 14** — and the 25 left are
+  "Congratulations!", "disappointing..." and a few long ellipsis runs, at
+  15–16 characters, which no narrowed box can hold.
+- **Fixed: extra lines scrolled past without waiting for A.** The box shows
+  two lines and `TextBox:update` advances between lines on a page with no
+  pause at all unless `pages.contBefore` marks one — the ROM's `<CONT>`.
+  Vanilla text is written two lines to a page, so a third line without a
+  `<CONT>` never happens and the engine has no reason to guard against one.
+  Narrowing manufactures exactly that, on **2644 pages** of the game's
+  dialogue at 14 columns: line three scrolled line one away on the
+  typewriter's own clock, unread and unprompted. Each box is now also
+  paginated at the box's *original* width, and where a page grew, every line
+  past the second is marked as a cont — arrow, A press, one-line scroll,
+  through the engine's own field rather than a re-implemented wait.
+- **Fixed: the first sign read after talking to someone wore their face.**
+  `OverworldState:interact` shows the text and only *then* emits
+  `world.interacted`, so the listener that clears the remembered speaker on a
+  sign ran one box too late — which is why the second read came out right and
+  the first never did. Same shape for bookshelves, hidden objects, PCs and an
+  A press that resolves to nothing. `interact` is now wrapped so the mod knows
+  an interaction is in flight: if one is, the facing cell has already been
+  asked and answered, and a miss there is a real "nobody is speaking" instead
+  of a gap for the 15-second memory to fill. Nothing else reads that flag —
+  a trainer spotting you across a room and a cutscene starting on a step both
+  arrive with no interaction running, and still get the memory.
+- **New: `SIDE = AUTO`, now the default.** Face left to talk to someone and
+  the portrait appears on the left; face right and it appears on the right.
+  Facing up or down carries no left/right information at all, so that case
+  compares the speaker's tile to the player's and falls back to the left on a
+  tie. A YES/NO box still forces the left, since the YES/NO prompt itself
+  comes down over the right of the screen. The resolved side is stored on the
+  box, so MARGIN's per-frame draw uses the same answer rather than re-deciding
+  every frame.
+- Removed the temporary MARGIN diagnostics from 0.4.3. They had settled the
+  question they were added for and were writing to
+  `<savedir>/dialogue_portraits.log` every two seconds indefinitely. `DIAG`
+  and `dlog` remain, off, for the two places a failure is otherwise silent.
+
 ## 0.4.3
 
 Fixed MARGIN drawing nothing, reported after 0.4.2. Two real bugs, both

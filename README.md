@@ -8,8 +8,16 @@ the dialogue box.
 
 | Option | Values | What it does |
 |---|---|---|
-| `PORTRAIT` | **INSET** / MARGIN / OFF | Where the portrait goes |
-| `SIDE` | **LEFT** / RIGHT | Which side of the screen |
+| `PORTRAIT` | **INSET** / FRAMED / MARGIN / OFF | Where the portrait goes |
+| `SIDE` | **AUTO** / LEFT / RIGHT | Which side of the box the face sits on |
+
+`SIDE = AUTO` follows the player. You turn left to talk to someone standing to
+your left, so that is the side of the screen they are on and the side their
+face goes. Facing up or down says nothing either way — they're straight ahead —
+so that case puts them on whichever side of you their tile actually is, and
+falls back to the left when even that is a tie. A YES/NO prompt always keeps
+the portrait on the left, because the YES/NO box itself comes down over the
+right of the screen.
 
 Portraits are an overworld feature. A trainer's pre- and post-battle speech
 both happen out in the overworld — the battle pushes after the challenge and
@@ -18,16 +26,36 @@ drawn during the battle itself never does.
 
 ### INSET 
 
-Takes six tiles off the left (or right) of the dialogue box and puts a framed
-Game Boy panel there. It is drawn inside the 160x144 canvas, so it gets the
-palette and the GBC filter along with everything else — it looks like part of
-the game.
+Puts the portrait inside the dialogue box, in its own four columns, and leaves
+the box itself full width. It is drawn inside the 160x144 canvas, so it gets
+the palette and the GBC filter along with everything else — it looks like part
+of the game.
 
-The cost is six columns of text: lines wrap at 12 characters instead of 18, so
-conversations run to more pages.
+The cost is four columns of text: lines wrap at 14 characters instead of 18
+(13 when the portrait is on the right, where the last column belongs to the
+blinking ▼), so conversations run to more pages.
 
-A box with no identifiable speaker, or whose speaker has no portrait, is left
-completely alone — full width, same wrapping, byte-identical to vanilla.
+### FRAMED
+
+The same idea with a border of its own: a separate 6x6 Game Boy panel standing
+beside the dialogue box, rather than art sharing the box's frame. Same 32x32
+picture, same in-canvas palette and filter.
+
+It costs two more columns than INSET — **12 characters a line** — because four
+of its six tiles are frame: the panel's own border plus the dialogue box's,
+drawn back to back between the art and the text. That is a real cost and not
+just a number. At 12 columns the engine has to break any word of 13 characters
+or longer partway through, which happens in 88 places across the game's
+dialogue, against 25 at INSET's 14.
+
+Pick it if you prefer the portrait to read as its own window. Pick INSET if
+you'd rather have the text room.
+
+*Both* leave a box with no identifiable speaker, or whose speaker has no
+portrait, completely alone — full width, same wrapping, byte-identical to
+vanilla. And in both, pages that get longer because of the narrower wrap wait
+for A before scrolling, the same as the ROM's own multi-page text does, rather
+than sliding a line away on the typewriter's clock before you've read it.
 
 ### MARGIN
 
@@ -48,9 +76,10 @@ world behind it.
 Because this draws over the finished frame rather than into the Game Boy
 canvas, it does not get the palette or the LCD grid either way — it reads as
 an overlay sitting next to the game rather than as part of it. Given that,
-INSET is the more consistently polished choice at typical window sizes; MARGIN's
-real advantage — not losing six text columns — is most worth it once the
-window is wide enough for it to sit cleanly in the letterbox.
+INSET and FRAMED are the more consistently polished choices at typical window
+sizes; MARGIN's real advantage — not losing any text columns at all — is most
+worth it once the window is wide enough for it to sit cleanly in the
+letterbox.
 
 ## Which picture you get
 
@@ -65,12 +94,40 @@ window is wide enough for it to sit cleanly in the letterbox.
    hand-checked list covering story characters with no `trainerClass` of
    their own (Oak, the rival, the Elite Four, Giovanni, Rocket grunts, and a
    few trainer classes whose overworld sprite is unambiguous).
+4. **A talking Pokémon's own front sprite**, from `art/pokemon/`. 29 map
+   objects across 26 species are a Pokémon standing around with a line of
+   dialogue — the Fan Club's Pikachu and Seel, Mr. Fuji's Psyduck and
+   Nidorino, the Fuchsia warden's yard, both Pidgey houses, the two Snorlax
+   blocking routes. Also exact rather than guessed, but from a different
+   field: only five overworld sprites cover all of them, so the species comes
+   from the object's own name (`FUCHSIACITY_LAPRAS`) and the file from that
+   species' `spriteFront`. Copycat's three *dolls* sit on the same sprites and
+   correctly get nothing, since "BIRD" is not a species.
+
+### Bill is a special case
+
+He's a Pokémon when you first meet him — *"Hiya! I'm a POKéMON… …No I'm not!
+Call me BILL!"* — and the game never says which. His object uses the generic
+monster sprite that fifteen unrelated objects share, so there's genuinely
+nothing in the data to recover. Different media have made him different
+Pokémon, so the mod picks **one of Rhydon, Clefairy, Nidoran♂ or Kabuto at
+random**, then remembers it: your Bill is the same Bill for that whole
+playthrough and every future visit. Rolled once per **save file**, so two
+saves can have different Bills. It's written into the save the next time you
+save, like any other event flag.
 
 That's it. **Nobody else gets a portrait.** Roughly 45 of the game's trainer
 classes have battle art; everyone outside that set — regular townsfolk,
 family, most named side characters — gets none, on purpose. The earlier
 alternative (cropping their own overworld sprite's face) was a worse picture
 of them, not a better fallback, so it was dropped.
+
+> **All 28 wanted species have art in `art/pokemon/`** — the 26 with a
+> talking overworld NPC plus Bill's two extra forms (Rhydon, Kabuto). Drawn
+> facing left, correct for the default right-side placement; the mod mirrors
+> the art horizontally when a box lands on the left instead (`SIDE = auto` or
+> a forced left), so the same file works on either side. See
+> `art/pokemon_new/README.md` for the full list.
 
 The short list in step 3 is deliberately conservative. The vanilla
 sprite-to-class mapping is many-to-one (`SPRITE_SUPER_NERD` alone backs Super
@@ -95,33 +152,27 @@ steps at real saturation instead.) Not a claim about anyone's "true" color,
 just one sourced, consistent palette standing in for one. See
 `art/trainers/README.md` to change it.
 
-## Portrait art status — work in progress
+## Portrait art status
 
-The 45 baked portraits started life as a mechanical pass: an automated
-30x30 crop of each ROM battle sprite, recolored with BROWNMON. That gets a
-face in the box for everyone, but a fixed crop can't frame 45 different
-poses well, so they're being replaced by hand a few at a time.
+The 45 trainer portraits started life as a mechanical pass: an automated
+30x30 crop of each ROM battle sprite, recolored with BROWNMON. That got a
+face in the box for everyone, but a fixed crop couldn't frame 45 different
+poses well, so they were replaced by hand — **all 45 of 45 are now
+hand-edited masters.**
 
-**23 of 45 done.** The hand-edited ones so far:
-
-`agatha` `beauty` `biker` `birdkeeper` `blackbelt` `blaine` `brock` `bruno`
-`bugcatcher` `burglar` `channeler` `cooltrainerf` `cooltrainerm` `cueball`
-`engineer` `erika` `fisher` `gambler` `gentleman` `giovanni` `hiker`
-`prof.oak` `rival1`
-
-**22 still on the original automated crop.** These work and are not broken —
-they're just not hand-framed yet:
-
-`jr.trainerf` `jr.trainerm` `juggler` `koga` `lance` `lass` `lorelei`
-`lt.surge` `misty` `pokemaniac` `psychic` `rival2` `rival3` `rocker`
-`rocket` `sabrina` `sailor` `scientist` `supernerd` `swimmer` `tamer`
-`youngster`
+The 28 Pokémon portraits (26 species with a talking overworld NPC, plus
+Bill's two extra forms) are hand-drawn from the start — the trainer set's
+batch crop doesn't transfer to creature art, see `art/pokemon_raw/README.md`
+for why — and **all 28 are in.**
 
 ### How the art pipeline works
 
 `art/trainers_new/` holds the **grayscale masters** — the editable source.
 `art/trainers/` holds what the mod actually loads, which is those masters
-after the BROWNMON recolor.
+after the BROWNMON recolor. `art/pokemon_new/` and `art/pokemon/` are the
+same pair for creature art (see `art/pokemon_new/README.md`) — the recolor
+script is identical, just without the crop step since these masters are
+already at their final size.
 
 **Edit in grayscale, recolor last.** The recolor buckets each pixel by its
 red channel (>211 / >127 / >43), which is only correct on the ROM's four flat
@@ -130,9 +181,12 @@ midtone is `(230,165,123)`, and R=230 is above the 211 threshold, so a second
 pass would read those tan pixels as white. The masters are therefore the only
 re-editable copy; the recolored files are one-way output.
 
-Current masters are 30x30. The INSET panel's interior is 32x32, so there are
-**2px spare in each dimension** — anything up to 32x32 still lands at a clean
-1x. Past 32 the scale goes fractional and the pixel art comes off the grid.
+Current masters are 30x30. Both INSET's slot inside the dialogue box and
+FRAMED's panel interior are 32x32, so there are **2px spare in each
+dimension** — anything up to 32x32 still lands at a clean 1x. Past 32 the
+scale goes fractional and the pixel art comes off the grid, and there is
+nowhere for a wider slot to come from: the height is fixed by the dialogue
+box, and every extra column of width is a column taken off the text.
 
 The regeneration script and the exact palette values are in
 [`art/trainers/README.md`](art/trainers/README.md).
@@ -199,6 +253,13 @@ both layouts, and is used uncropped exactly as supplied.
   that or hands off between two characters.
 - **Portrait is per box, not per page.** A single box that breaks into several
   pages keeps one portrait throughout, even if the writing changes speaker.
+  The side is fixed per box for the same reason.
+- **A narrowed box still has to break a word longer than its line.** Counting
+  across the whole game's dialogue: 25 words get cut mid-way at INSET's 14
+  columns, 40 at its 13 (portrait on the right), 88 at FRAMED's 12. The ones
+  that survive INSET are "Congratulations!", "disappointing..." and a couple
+  of long ellipsis runs, at 15–16 characters — they do not fit any narrowed
+  box. MARGIN has none of this, since it never narrows anything.
 - **MARGIN under survey zoom** assumes the UI is 160 wide. Zoomed out, the
   portrait's scale will be slightly off.
 

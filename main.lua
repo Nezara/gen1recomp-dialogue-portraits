@@ -92,14 +92,35 @@
 --
 -- ------- where
 --
--- INSET narrows the dialogue box. Theme.textBox is read fresh by every
--- TextBox at construction (src/ui/Theme.lua, src/render/TextBox.lua:54), so
--- swapping it for the length of one constructor call and putting it straight
--- back gives a per-box geometry change with nothing left behind -- a box with
--- no speaker is byte-identical to vanilla. Six tiles buys a 6x6 framed panel
--- whose interior is 32x32, and costs the text six columns (18 -> 12).
--- Drawing happens inside the 160x144 UI canvas, so the panel is
--- palette-mapped and GBC-FX'd along with everything else.
+-- Two of the three layouts draw inside the 160x144 UI canvas, so their art is
+-- palette-mapped and GBC-FX'd along with everything else. Both work the same
+-- way: Theme.textBox is read fresh by every TextBox at construction
+-- (src/ui/Theme.lua, src/render/TextBox.lua:61), so swapping it for the
+-- length of one constructor call and putting it straight back gives a per-box
+-- geometry change with nothing left behind -- a box with no speaker is
+-- byte-identical to vanilla. They differ only in what they buy with it.
+--
+-- FRAMED takes six tiles off the end of the dialogue box and stands a
+-- separate 6x6 Game Boy panel in them, its own border and all. The interior
+-- that leaves for art is 32x32, and the text drops to 12 columns.
+--
+-- INSET buys the SAME 32x32 for four columns instead of six, by noticing that
+-- four of FRAMED's six are frame: the panel's own border and the dialogue
+-- box's, drawn back to back between the art and the text. Dropping the second
+-- one and letting the portrait share the box's own leaves the text 14 columns
+-- (LEFT) or 13 (RIGHT). That matters more than it sounds -- at 12 columns the
+-- engine's wrapper has to hard-cut any word of 13 characters or more mid-word
+-- (src/render/TextBox.lua pushLine falls back to a glyph-boundary cut when no
+-- space fits), and "a 12-letter word plus its comma" is exactly 13. Across
+-- the ROM's own dialogue that is 88 broken words at 12 columns against 25 at
+-- 14.
+--
+-- INSET's RIGHT stops one column short of where its LEFT does because
+-- TextBox:draw puts the blinking page arrow at (tx + tw - 2) and the portrait
+-- is painted over the finished box: art in that column would swallow the one
+-- cue that says "press A". FRAMED has no such problem -- its panel is outside
+-- the box the arrow is measured against -- which is part of why it is still
+-- here as a choice rather than as history.
 --
 -- MARGIN uses the `render.hud` hook instead: window space, over the finished
 -- composite, so the portrait can live in the letterbox and cost the text
@@ -107,9 +128,13 @@
 -- palette, no LCD grid -- so it reads as an overlay rather than as part of
 -- the game.
 
-local PANEL_TW = 6              -- tiles taken from the dialogue box for the panel
+local ART_TW = 4                -- INSET: interior columns of the dialogue box given to the art
+local ARROW_TW = 1              -- INSET: the blinking page arrow owns the last interior column
+local PANEL_TW = 6              -- FRAMED: tiles taken from the dialogue box for its own panel
+local MIN_COLS = 10             -- refuse to narrow a box past this many text columns
 local MEMORY_SECONDS = 15       -- how long a cutscene speaker stays remembered
 local ART_DIR = "art/trainers/" -- pre-baked crops, mod-relative (see art/trainers/README)
+local MON_DIR = "art/pokemon/"  -- the same, for talking POKEMON (see art/pokemon/README)
 
 -- Overworld sprite -> battle front art, for speakers with no trainerClass of
 -- their own (OAK standing in his lab is not a trainer record). Only entries
@@ -171,10 +196,56 @@ local NAME_ART = {
   KOGA = "koga",
 }
 
+-- ------- talking POKEMON
+--
+-- 27 map objects in Red are a POKEMON standing around with a line of
+-- dialogue -- the Fan Club's PIKACHU and SEEL, Mr. Fuji's PSYDUCK and
+-- NIDORINO, the Fuchsia warden's yard, the two PIDGEY houses, Cerulean's
+-- SLOWBRO. **Their species is not in their sprite.** Only five overworld
+-- sprites cover all of them (SPRITE_BIRD, SPRITE_FAIRY, SPRITE_MONSTER,
+-- SPRITE_SEEL, SPRITE_SNORLAX), so SPRITE_BIRD alone is SPEAROW, PIDGEY,
+-- PIDGEOT, FEAROW, DODUO and three legendary birds -- exactly the
+-- many-to-one trap NAMED_PIC exists to avoid guessing through.
+--
+-- The species IS in the object's own `name`, which the ROM writes out in
+-- full: CELADONMANSION1F_MEOWTH, FUCHSIACITY_LAPRAS, SSANNE1FROOMS_
+-- WIGGLYTUFF. So the rule is "drop the map prefix and ask game.data.pokemon
+-- whether what's left is a species", which is a lookup rather than a guess,
+-- and stays right for map objects this mod has never seen.
+--
+-- It also declines correctly, with no list to maintain. Copycat's room has
+-- three DOLLS on the same three sprites -- COPYCATSHOUSE2F_BIRD, _FAIRY and
+-- _MONSTER, all saying "it's only a doll!" -- and "BIRD" is not a species,
+-- so they get nothing. Neither do the Power Plant's six POWERPLANT_VOLTORB1
+-- ..6, whose trailing digit is not stripped on purpose.
+--
+-- Three names the ROM does not spell the way its own species table does:
+local MON_NAME_FIX = {
+  -- Pewter's is NIDORAN_M, per the ported script's own `play_cry` row
+  -- (data/scripts/flavor/pewter_nidoran_house.lua) -- the object name says
+  -- only "NIDORAN", which is not a species key either way.
+  NIDORAN = "NIDORAN_M",
+  NIDORANF = "NIDORAN_F",
+  NIDORANM = "NIDORAN_M",
+}
+
+-- Bill is a POKEMON when you first meet him -- "Hiya! I'm a POKEMON... ...No
+-- I'm not! Call me BILL!" -- and the game never says which one. His object
+-- (BILLSHOUSE_BILL_POKEMON) uses SPRITE_MONSTER, the generic silhouette
+-- fifteen unrelated objects share, so there is nothing in the data to
+-- recover: unlike every other portrait here, his species is a choice.
+--
+-- Different media have made it a different Pokemon, so rather than pick one,
+-- roll one of the four and keep it. Rolled once per SAVE FILE and remembered
+-- forever after, so a given playthrough's Bill is always the same Bill.
+local BILL_OBJECT = "BILL_POKEMON"
+local BILL_FORMS = { "RHYDON", "CLEFAIRY", "NIDORAN_M", "KABUTO" }
+local BILL_FLAG = "DP_BILL_FORM_"
+
 return function(mod)
   local TextBox   = require("src.render.TextBox")
   local Theme     = require("src.ui.Theme")
-  local Font      = require("src.render.Font")
+  local Font      = require("src.render.Font") -- FRAMED's panel border
   local Collision = require("src.world.Collision")
   local PaletteFX = require("src.render.PaletteFX")
 
@@ -182,9 +253,16 @@ return function(mod)
   -- adding to it, so a second call would silently wipe the first.
   mod.options:define({
     { key = "style", label = "PORTRAIT", type = "choice", default = "inset",
-      choices = { { "INSET", "inset" }, { "MARGIN", "margin" }, { "OFF", "off" } } },
-    { key = "side", label = "SIDE", type = "choice", default = "left",
-      choices = { { "LEFT", "left" }, { "RIGHT", "right" } } },
+      choices = { { "INSET", "inset" }, { "FRAMED", "framed" },
+                  { "MARGIN", "margin" }, { "OFF", "off" } } },
+    -- AUTO reads the player's own facing: you turn LEFT to talk to somebody
+    -- standing to your left, so that is the side of the screen they are on
+    -- and the side their face belongs on. Facing UP or DOWN says nothing
+    -- either way -- the speaker is straight ahead -- so that case compares
+    -- cells when the speaker is known and otherwise keeps the traditional
+    -- left.
+    { key = "side", label = "SIDE", type = "choice", default = "auto",
+      choices = { { "AUTO", "auto" }, { "LEFT", "left" }, { "RIGHT", "right" } } },
   })
 
   local function opt(key, fallback)
@@ -259,13 +337,91 @@ return function(mod)
     return ctx and ctx.npc or nil
   end
 
+  -- Is an A-press interaction resolving right now?
+  --
+  -- The `world.interacted` listener above is meant to clear the memory the
+  -- moment you read a sign instead of talking to somebody, and it does --
+  -- one box too late. OverworldState:interact (src/world/OverworldController
+  -- .lua) SHOWS the text and only then announces what the press landed on:
+  --
+  --     if sign then
+  --       self:showMapText(sign.text, nil)     -- TextBox.new runs in here
+  --       interacted(self, fx, fy, "sign", sign)
+  --
+  -- so the first sign read after talking to somebody with a portrait was
+  -- built while lastNpc still held them, wore their face, and only then
+  -- cleared -- which is why the SECOND read came out right and the first
+  -- never did. The bookshelf, hidden-object and PC branches below it are
+  -- shaped the same way, and so is any A press that resolves to nothing.
+  --
+  -- Knowing an interaction is in flight is enough to fix all of them at once:
+  -- if one is, the facing cell has already been asked and answered, so a
+  -- miss there is a real "nobody is speaking" rather than a gap for the
+  -- memory to fill. Nothing else is inferred from this flag -- the trainer
+  -- who spots you across a room and the cutscene that starts on a step both
+  -- arrive with no interaction running at all, and still get the memory.
+  --
+  -- OverworldState is pushed onto the stack as ITSELF (Game.lua:86,
+  -- `self.overworld = OverworldState`; Console.lua pushes the required module
+  -- directly), not as an instance of a class -- so this is a plain function
+  -- swap on one table, and `self` inside it is that same table.
+  local interactDepth = 0
+
+  local function wrapInteract()
+    local ok, OverworldState = pcall(require, "src.world.OverworldController")
+    if not ok or type(OverworldState) ~= "table" then return false end
+    if OverworldState.dp_interactWrapped then return true end
+    if type(OverworldState.interact) ~= "function" then return false end
+    OverworldState.dp_interactWrapped = true
+    local originalInteract = OverworldState.interact
+    OverworldState.interact = function(self, ...)
+      interactDepth = interactDepth + 1
+      local okRun, err = pcall(originalInteract, self, ...)
+      interactDepth = math.max(0, interactDepth - 1)
+      if not okRun then error(err, 0) end
+    end
+    return true
+  end
+
+  -- The engine requires this module during Game:load, so the immediate
+  -- attempt normally wins; game.ready is the retry for a load order that
+  -- puts mods first, and costs nothing when the wrap already took.
+  if not wrapInteract() then
+    mod.events:on("game.ready", function() pcall(wrapInteract) end)
+  end
+
   local function speakerFor(game)
     local ok, npc = pcall(scriptNpc, game)
     if ok and npc then return npc end
     ok, npc = pcall(facingNpc, game)
     if ok and npc then return npc end
+    if interactDepth > 0 then
+      -- An A press that landed on a sign, a bookshelf, a hidden item, a PC
+      -- or bare ground. Drop the memory too, so nothing downstream in the
+      -- same conversation can inherit it either.
+      lastNpc, lastNpcAt = nil, -math.huge
+      return nil
+    end
     if lastNpc and (now() - lastNpcAt) <= MEMORY_SECONDS then return lastNpc end
     return nil
+  end
+
+  -- Which side of the box the portrait belongs on, resolved per box.
+  local function sideFor(game, npc)
+    local side = opt("side", "auto")
+    if side ~= "auto" then return side end
+    local ow = overworldOf(game)
+    local player = ow and ow.player
+    local facing = player and player.facing -- lowercase live movement casing
+    if facing == "left" then return "left" end
+    if facing == "right" then return "right" end
+    -- Facing up or down: the speaker is straight ahead, so facing carries no
+    -- left/right information at all. Their cell does, when we have them.
+    if player and player.cellX and npc and npc.cellX then
+      if npc.cellX < player.cellX then return "left" end
+      if npc.cellX > player.cellX then return "right" end
+    end
+    return "left"
   end
 
   -- ------- art
@@ -277,7 +433,7 @@ return function(mod)
 
   -- Small custom art gets doubled in MARGIN mode, where there is room and a
   -- 16x16 image at 1x would be a postage stamp. INSET ignores this and fits
-  -- to the panel interior instead.
+  -- to its slot inside the box instead.
   local function magFor(w, h)
     if w <= 32 and h <= 32 then return 2 end
     return 1
@@ -300,8 +456,9 @@ return function(mod)
     return art
   end
 
-  -- record.pic is a full ROM path (".../battle/trainers/brock.png"); the
-  -- pre-baked crop sitting in this mod's own art/trainers/ keeps the same
+  -- A trainer class's `pic` and a species' `spriteFront` are both full ROM
+  -- paths (".../battle/trainers/brock.png", ".../battle/front/nidoranm.png");
+  -- the pre-baked crops sitting in this mod's own art/ folders keep the same
   -- basename, so this is the only translation needed between the two.
   local function basenameOf(path)
     return path and path:match("([^/]+)%.png$")
@@ -312,20 +469,31 @@ return function(mod)
   -- path a player's own portraits/ override goes through -- just a
   -- different folder, so both land in a plain, uncached-miss-safe art
   -- record with no Quad or engine Assets reach involved.
-  local function trainerArt(basename)
+  --
+  -- `dir` selects trainers or pokemon. The cache is keyed by the full
+  -- relative path rather than by basename: the two sets are independent
+  -- folders and could legitimately collide on a name.
+  local function trainerArt(basename, dir)
     if not basename then return nil end
-    local hit = trainerCache[basename]
+    dir = dir or ART_DIR
+    local path = dir .. basename .. ".png"
+    local hit = trainerCache[path]
     if hit ~= nil then return hit or nil end
     local ok, image = pcall(function()
-      return mod.assets:image(ART_DIR .. basename .. ".png")
+      return mod.assets:image(path)
     end)
     if not ok or not image then
-      trainerCache[basename] = false
+      trainerCache[path] = false
       return nil
     end
     local w, h = image:getDimensions()
-    local art = { image = image, w = w, h = h, mag = 1 }
-    trainerCache[basename] = art
+    -- Pokemon portraits are drawn facing left (correct for the default
+    -- RIGHT-side placement, where the speaker faces in towards the text).
+    -- Trainer art is a front-on battle pose with no facing to get wrong, so
+    -- only MON_DIR art is tagged for the flip blitArt/drawMarginPanel apply
+    -- when the box lands on the left instead.
+    local art = { image = image, w = w, h = h, mag = 1, directional = (dir == MON_DIR) }
+    trainerCache[path] = art
     return art
   end
 
@@ -340,6 +508,77 @@ return function(mod)
       if art then return art end
     end
     return trainerArt(spriteId and NAMED_PIC[spriteId])
+  end
+
+  -- ------- which POKEMON
+  --
+  -- Bill's form, rolled once per save file and kept.
+  --
+  -- Persisted through Flags rather than modData: game.save.modData did not
+  -- reliably survive a reload in live testing, while save.flags is a real,
+  -- core part of the save FORMAT. Flags only ever stores `true`, but the
+  -- NAME is an arbitrary string and save.flags is a plain table -- so the
+  -- payload rides in the key ("DP_BILL_FORM_KABUTO") and comes back out by
+  -- scanning for the prefix. Being inside the save file, it is also
+  -- automatically per-save: two playthroughs can roll differently and
+  -- neither can see the other's answer.
+  --
+  -- The one caveat is inherited from the save format: it becomes permanent
+  -- when the player next SAVES. Meet Bill and reload without saving and he
+  -- rerolls, exactly like any other event flag set in that window.
+  local Flags
+  do
+    local ok, mod_ = pcall(require, "src.script.Flags")
+    if ok then Flags = mod_ end
+  end
+
+  local function billForm(game)
+    local save = game and game.save
+    local flags = save and save.flags
+    if type(flags) ~= "table" then return nil end
+    for name in pairs(flags) do
+      if type(name) == "string" then
+        local species = name:match("^" .. BILL_FLAG .. "(.+)$")
+        if species then return species end
+      end
+    end
+    -- love.math.random, never math.random: math.random is the GLOBAL Lua
+    -- RNG this engine also rolls battles and encounters on, and reseeding
+    -- or drawing from it perturbs them. LOVE seeds its own generator from
+    -- system entropy at startup, independently.
+    local index = 1
+    if love and love.math and love.math.random then
+      index = love.math.random(#BILL_FORMS)
+    end
+    local pick = BILL_FORMS[index] or BILL_FORMS[1]
+    if Flags and Flags.set then pcall(Flags.set, save, BILL_FLAG .. pick) end
+    return pick
+  end
+
+  -- The species a map object IS, or nil for "not a POKEMON" -- which is the
+  -- answer for every human NPC, for Copycat's three dolls, and for the Power
+  -- Plant's numbered VOLTORBs. Everything after the FIRST underscore is the
+  -- object's own half of the name; the map prefix carries digits of its own
+  -- (SSANNE1FROOMS, COPYCATSHOUSE2F) so it can't be matched by shape.
+  local function speciesOf(game, def)
+    local name = def and def.name
+    if type(name) ~= "string" then return nil end
+    local tail = name:match("^[^_]+_(.+)$")
+    if not tail then return nil end
+    if tail == BILL_OBJECT then return billForm(game) end
+    tail = MON_NAME_FIX[tail] or tail
+    local dex = game and game.data and game.data.pokemon
+    if dex and dex[tail] then return tail end
+    return nil
+  end
+
+  -- Same shape as classArt below: the species record names its own art file
+  -- (`spriteFront` = "assets/generated/battle/front/nidoranm.png"), and this
+  -- mod's own crop keeps that basename, so nothing is guessed here either.
+  local function monArt(game, species)
+    local dex = game and game.data and game.data.pokemon
+    local record = species and dex and dex[species]
+    return trainerArt(basenameOf(record and record.spriteFront), MON_DIR)
   end
 
   -- Which of the rival's three outfits, when the text says "{RIVAL}:" but the
@@ -438,7 +677,16 @@ return function(mod)
     -- an item ball is an object_event with a payload, not somebody talking
     if def.item and def.item ~= "0" and def.item ~= 0 then return nil end
 
-    return customArt(def.trainerClass) or customArt(def.sprite)
+    -- A talking POKEMON answers first and most specifically -- its species is
+    -- written on the object, while its SPRITE is one of five shared by
+    -- everything from SPEAROW to MOLTRES. Still falls through if nobody has
+    -- drawn that species yet, so a sprite-level portraits/ override keeps
+    -- working the way it always did.
+    local species = speciesOf(game, def)
+    local monPortrait = species and (customArt(species) or monArt(game, species))
+
+    return monPortrait
+           or customArt(def.trainerClass) or customArt(def.sprite)
            or classArt(game, def, def.sprite)
   end
 
@@ -517,34 +765,38 @@ return function(mod)
   -- ------- drawing
 
   -- Centred, and snapped to a whole scale whenever the art actually fits, so
-  -- pixel art stays on the pixel grid. The 30x30 crop against the INSET
-  -- panel's 32x32 interior lands on a clean 1x with a pixel of padding each
-  -- side; only art bigger than its hole (a custom override, say) goes
-  -- fractional.
-  local function blitArt(art, x, y, w, h)
+  -- pixel art stays on the pixel grid. The 30x30 crop against INSET's 32x32
+  -- slot (ART_TW columns wide by the box's own interior height) lands on a
+  -- clean 1x with a pixel of padding each side; only art bigger than its
+  -- hole (a custom override, say) goes fractional.
+  -- `flip` mirrors directional (POKEMON) art horizontally -- the masters
+  -- face left, which is correct for the default right-side placement, so a
+  -- box that lands on the left instead needs the art turned to face back
+  -- in towards the text. Negative sx flips around the draw origin, so the
+  -- origin is walked to the mirrored art's own right edge first.
+  local function blitArt(art, x, y, w, h, flip)
     local scale = math.min(w / art.w, h / art.h)
     if scale >= 1 then scale = math.floor(scale) end
     local dx = x + math.floor((w - art.w * scale) / 2)
     local dy = y + math.floor((h - art.h * scale) / 2)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(art.image, dx, dy, 0, scale, scale)
+    if flip then
+      love.graphics.draw(art.image, dx + art.w * scale, dy, 0, -scale, scale)
+    else
+      love.graphics.draw(art.image, dx, dy, 0, scale, scale)
+    end
   end
 
-  -- ------- TEMPORARY margin diagnostics
+  -- ------- diagnostics
   --
-  -- Set DIAG = false (or delete this block and its three call sites) once the
-  -- MARGIN problem is settled. Writes to <savedir>/dialogue_portraits.log.
-  --
-  -- Everything MARGIN needs was verified against the engine source and checks
-  -- out: `render.hud` is a real hook called unconditionally from Game:draw()
-  -- on every platform, its viewport really does carry gameX/gameY/gameWidth/
-  -- gameHeight/width, TextBox really does set `isTextBox` and really is
-  -- pushed onto game.stack, and Hooks:wrap has no allowlist or permission
-  -- gate. So the break is runtime-only, and every failure mode in this path
-  -- is silent (two early returns plus a pcall). This logs each gate in order
-  -- so one run says which one it is.
-  local DIAG = true
-  local diagFrames, diagLogAt, diagDrawAt = 0, -math.huge, -math.huge
+  -- Off by default. The frame-by-frame gate trace that lived here through
+  -- 0.4.3 did its job -- MARGIN drawing nothing was a dead `state.isTextBox`
+  -- marker, fixed there -- and has been removed rather than left writing a
+  -- line every two seconds forever. What is left is the two places a failure
+  -- is otherwise completely silent (a throw inside a pcall'd draw, and the
+  -- load line that says the entry chunk got this far). Flip DIAG to true and
+  -- the log lands in <savedir>/dialogue_portraits.log.
+  local DIAG = false
 
   local function dlog(fmt, ...)
     if not DIAG then return end
@@ -556,21 +808,72 @@ return function(mod)
     end)
   end
 
-  local function drawInsetPanel(box)
-    local tx, ty, th = box.dp_panelTx, box.boxTy, box.boxTh
-    -- The dialogue box declares itself edge-anchored under UI LAYOUT =
-    -- DYNAMIC (TextBox:draw -> Renderer:setUIAnchor). The panel has to make
-    -- the same declaration or it stays behind in the letterbox while the box
-    -- it belongs to docks to the window bottom.
-    local renderer = box.game and box.game.renderer
-    if renderer and renderer.setUIAnchor then
-      renderer:setUIAnchor(tx * 8, ty * 8, PANEL_TW * 8, th * 8, "bottom")
+  -- Where the art goes and what the text keeps, for whichever of the two
+  -- in-canvas layouts is chosen. Both derive everything from the geometry
+  -- Theme.textBox is actually carrying rather than from the vanilla
+  -- 0/12/20/6 literals, so a re-themed box still lands correctly, and both
+  -- return nil when the box is too small to give anything up.
+  --
+  -- `theme` is what Theme.textBox becomes for the length of the constructor.
+  -- INSET changes only maxCols -- the box keeps its full width and draws its
+  -- ordinary frame, and the text is pushed clear of the art afterwards by
+  -- overriding textX. FRAMED moves and shrinks the box itself, so its text
+  -- pen follows from boxTx on its own and needs no override.
+  local function insetLayout(base, side)
+    local tx, tw, maxCols = base.tx, base.tw, base.maxCols
+    if not (tx and tw and maxCols) then return nil end
+    local reserved = ART_TW + (side == "right" and ARROW_TW or 0)
+    if maxCols - reserved < MIN_COLS then return nil end
+    local artCol, textX
+    if side == "right" then
+      artCol, textX = tx + tw - 1 - ARROW_TW - ART_TW, (tx + 1) * 8
+    else
+      artCol, textX = tx + 1, (tx + 1 + ART_TW) * 8
     end
-    love.graphics.setColor(0, 0, 0, 1)
-    Font.drawBox(tx, ty, PANEL_TW, th)
-    local px, py = (tx + 1) * 8, (ty + 1) * 8
-    local pw, ph = (PANEL_TW - 2) * 8, (th - 2) * 8
-    blitArt(box.dp_art, px, py, pw, ph)
+    return {
+      artCol = artCol, artW = ART_TW * 8, textX = textX,
+      theme = { tx = tx, ty = base.ty, tw = tw, th = base.th,
+                maxCols = maxCols - reserved },
+    }
+  end
+
+  local function framedLayout(base, side)
+    local tx, tw, maxCols = base.tx, base.tw, base.maxCols
+    if not (tx and tw and maxCols) then return nil end
+    if maxCols - PANEL_TW < MIN_COLS then return nil end
+    local boxTw = tw - PANEL_TW
+    -- The panel takes the end of the box's own run of tiles, and the box
+    -- slides over to make room -- so on the right the panel is past the
+    -- shortened box, and on the left the box starts PANEL_TW in.
+    local panelTx = (side == "right") and (tx + boxTw) or tx
+    local boxTx = (side == "right") and tx or (tx + PANEL_TW)
+    return {
+      panelTx = panelTx,
+      artCol = panelTx + 1, artW = (PANEL_TW - 2) * 8,
+      theme = { tx = boxTx, ty = base.ty, tw = boxTw, th = base.th,
+                maxCols = maxCols - PANEL_TW },
+    }
+  end
+
+  local function drawPortrait(box)
+    local x, y = box.dp_artX, box.dp_artY
+    local w, h = box.dp_artW, box.dp_artH
+    if box.dp_panelTx then
+      -- FRAMED only. The panel is a window of its own beside the dialogue
+      -- box, so it has to make the same edge-anchor declaration the box makes
+      -- under UI LAYOUT = DYNAMIC (TextBox:draw -> Renderer:setUIAnchor) or
+      -- it stays behind in the letterbox while the box it belongs to docks to
+      -- the window bottom. INSET needs none of this: its art is inside the
+      -- box's own rect, which TextBox:draw has already anchored.
+      local renderer = box.game and box.game.renderer
+      if renderer and renderer.setUIAnchor then
+        renderer:setUIAnchor(box.dp_panelTx * 8, box.boxTy * 8,
+                             PANEL_TW * 8, box.boxTh * 8, "bottom")
+      end
+      love.graphics.setColor(0, 0, 0, 1)
+      Font.drawBox(box.dp_panelTx, box.boxTy, PANEL_TW, box.boxTh)
+    end
+    blitArt(box.dp_art, x, y, w, h, box.dp_art.directional and box.dp_side == "left")
     -- art/trainers/ ships its color already baked in (see the header
     -- comment), which matters here for the same reason it would if these
     -- were still flat DMG grays: drawn raw into the dialogue box with no
@@ -581,9 +884,9 @@ return function(mod)
     -- isn't a whole number. PaletteFX.markTrueColor is the engine's own
     -- opt-out -- Renderer:endFrame re-blits this rect unshaded on top of the
     -- colorized pass, the same mechanism a trueColor sprite/tileset record
-    -- gets automatically. Only the art gets the exemption; the frame stays
-    -- colorized like the rest of the dialogue box.
-    PaletteFX.markTrueColor(px, py, pw, ph)
+    -- gets automatically. Only the art gets the exemption; the frame and text
+    -- around it stay colorized like the rest of the screen.
+    PaletteFX.markTrueColor(x, y, w, h)
     love.graphics.setColor(1, 1, 1, 1)
   end
 
@@ -592,13 +895,16 @@ return function(mod)
   -- tucked-in portrait ABOVE the text rather than across it.
   local BOX_TOP_FRAC = 12 / 18
 
-  local function drawMarginPanel(vp, art)
+  -- `side` comes from the box rather than from the option directly: under
+  -- SIDE = AUTO it was resolved once, against the facing the player had when
+  -- the box was built, and this hook runs every frame afterwards.
+  local function drawMarginPanel(vp, art, side)
     -- GB pixels -> window units. gameWidth is the letterbox, so this tracks
     -- window size and integer scale without reading the renderer.
     local unit = (vp.gameWidth or 0) / 160
     if unit <= 0 then return end
 
-    local side  = opt("side", "left")
+    side = side or "left"
     local pad   = 2 * unit   -- breathing room around the panel
     local frame = 1 * unit   -- the drawn border
 
@@ -656,23 +962,17 @@ return function(mod)
     -- Whole pixels, so the art lands on the device grid.
     x, y = math.floor(x + 0.5), math.floor(y + 0.5)
     local bx, by, bw, bh = x - frame, y - frame, w + 2 * frame, h + 2 * frame
-    if DIAG then
-      local t = now()
-      if (t - diagDrawAt) >= 2 then
-        diagDrawAt = t
-        dlog("  DRAWING margin: unit=%.2f marginW=%.0f need=%.0f scale=%d art=%dx%d -> panel x=%.0f y=%.0f w=%.0f h=%.0f (playfield x=%s..%s, window %sx%s)",
-             unit, marginW, need, scale, art.w, art.h, bx, by, bw, bh,
-             tostring(vp.gameX), tostring(vp.gameX + vp.gameWidth),
-             tostring(vp.width), tostring(vp.height))
-      end
-    end
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.rectangle("fill", bx, by, bw, bh)
     love.graphics.setColor(0, 0, 0, 1)
     love.graphics.setLineWidth(math.max(1, frame))
     love.graphics.rectangle("line", bx, by, bw, bh)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.draw(art.image, x, y, 0, scale, scale)
+    if art.directional and side == "left" then
+      love.graphics.draw(art.image, x + w, y, 0, -scale, scale)
+    else
+      love.graphics.draw(art.image, x, y, 0, scale, scale)
+    end
   end
 
   -- ------- the seams
@@ -684,15 +984,57 @@ return function(mod)
   -- the overworld. The guard keeps a hot reload from stacking a second layer
   -- on the first.
 
+  -- Re-wrapping narrower makes pages longer, and a longer page scrolls
+  -- itself.
+  --
+  -- The box holds two lines. TextBox:update advances to the next line on the
+  -- page with no pause at all unless pages.contBefore says that line was
+  -- preceded by a `\v` -- the ROM's own <CONT>, which prints the blinking
+  -- arrow and waits for A. Vanilla text is authored to two lines per page, so
+  -- a third line without a <CONT> simply never happens and the engine has no
+  -- reason to guard against one. Narrowing the box manufactures exactly that:
+  -- a page the ROM wrote as two lines wraps to three, and line three scrolls
+  -- line one away on the typewriter's own clock, unread and unprompted.
+  --
+  -- Font.split/spansFitting are the same measurements TextBox.paginate uses,
+  -- so paginating the same text at the box's ORIGINAL width says precisely
+  -- how many lines each page was meant to have. Where ours grew, every line
+  -- past the second is marked as a cont -- arrow, A press, one-line scroll,
+  -- the ROM's own <CONT> behaviour, reached through the engine's own field
+  -- rather than by re-implementing the wait.
+  --
+  -- Pages themselves can't move: `\f` splits them before any wrapping
+  -- happens, so the two paginations always agree page for page, and only the
+  -- line counts inside them differ.
+  local function keepPageWaits(game, box, rawText, vanillaMaxCols)
+    local conts = box.pages and box.pages.contBefore
+    if type(conts) ~= "table" then return end
+    local vanilla
+    local ok, substituted = pcall(TextBox.substitute, game, rawText)
+    if ok then
+      local ok2, paged = pcall(TextBox.paginate, substituted, vanillaMaxCols)
+      if ok2 then vanilla = paged end
+    end
+    for page, lines in ipairs(conts) do
+      -- No vanilla answer (substitution threw): assume the two lines the box
+      -- can physically show, which is the vanilla shape for all but the
+      -- handful of <CONT> pages -- and those already carry their own waits.
+      local was = vanilla and vanilla[page] and #vanilla[page] or 2
+      if #lines > was then
+        for i = 3, #lines do lines[i] = true end
+      end
+    end
+  end
+
   if not TextBox.dp_wrapped then
     TextBox.dp_wrapped = true
 
     local originalNew = TextBox.new
     TextBox.new = function(game, text, onDone, opts)
       local style = opt("style", "inset")
-      local art
+      local art, speaker
       if style ~= "off" and game and allowed(game) then
-        local speaker = speakerFor(game)
+        speaker = speakerFor(game)
         -- The text's own "NAME: " wins when it's there, even down to
         -- deciding "no portrait" -- see nameArt's comment on why a stale
         -- npc guess is worse than trusting that. Only when the text names
@@ -706,32 +1048,31 @@ return function(mod)
         end
       end
 
+      local side
+      if art then
+        local okSide, resolved = pcall(sideFor, game, speaker)
+        side = (okSide and resolved) or "left"
+        -- A YES/NO box is anchored at Theme.choiceBox.tx = 14 and comes down
+        -- over the still-visible text (TextBox opts.choice). On the right
+        -- that lands exactly on the portrait, so a box that will ask a
+        -- question keeps its art on the left whatever the option says.
+        if opts and opts.choice then side = "left" end
+      end
+
       -- Swap the geometry for exactly the length of the constructor. TextBox
       -- copies tx/ty/tw/th/maxCols onto itself and paginates against them
       -- right there, so putting the table back afterwards leaves the new box
       -- narrow and every other box in the game untouched.
-      local saved, panelTx
-      if art and style == "inset" then
+      local saved, layout
+      if art and (style == "inset" or style == "framed") then
         local base = Theme.textBox
-        if base and (base.tw or 0) > PANEL_TW + 4 then
+        if base then
+          layout = (style == "framed") and framedLayout(base, side)
+                   or insetLayout(base, side)
+        end
+        if layout then
           saved = base
-          local tw = base.tw - PANEL_TW
-          local maxCols = base.maxCols - PANEL_TW
-          -- A YES/NO box is anchored at Theme.choiceBox.tx = 14 and comes down
-          -- over the still-visible text (TextBox opts.choice). On the right
-          -- that lands exactly on the portrait, so a box that will ask a
-          -- question keeps its panel on the left whatever the option says.
-          local side = opt("side", "left")
-          if opts and opts.choice then side = "left" end
-          if side == "right" then
-            panelTx = base.tx + tw
-            Theme.textBox = { tx = base.tx, ty = base.ty, tw = tw,
-                              th = base.th, maxCols = maxCols }
-          else
-            panelTx = base.tx
-            Theme.textBox = { tx = base.tx + PANEL_TW, ty = base.ty, tw = tw,
-                              th = base.th, maxCols = maxCols }
-          end
+          Theme.textBox = layout.theme
         end
       end
 
@@ -739,24 +1080,49 @@ return function(mod)
       if saved then Theme.textBox = saved end
       if not ok then error(box, 0) end
 
+      if layout then
+        -- textX is the pen the box starts each line at. FRAMED moved boxTx,
+        -- so TextBox.new already derived the right one; INSET didn't, and
+        -- applies the indent here rather than smuggling it through the theme.
+        if layout.textX then box.textX = layout.textX end
+        box.dp_panelTx = layout.panelTx
+        box.dp_artX = layout.artCol * 8
+        box.dp_artY = (box.boxTy + 1) * 8
+        box.dp_artW = layout.artW
+        box.dp_artH = (box.boxTh - 2) * 8
+        -- opts.auto boxes without .wait (Oak's "Hey! Wait!" bubble in
+        -- data/scripts/story2.lua, the trade/Hall of Fame/party-menu
+        -- timers, ...) dismiss themselves on a frame count once
+        -- self.done fires -- TextBox:update never even looks at self.auto
+        -- until every line has finished typing. A synthetic CONT wait
+        -- injected here stalls that timer on a manual A-press the
+        -- vanilla, un-narrowed box at 18 cols never needed: narrowing for
+        -- the portrait can push a 2-line auto message to 3, and without
+        -- this guard that synthetic line silently turns a hands-off
+        -- cutscene beat into one MARGIN plays on schedule (it never
+        -- narrows) but INSET/FRAMED stall on, waiting for a press that
+        -- was never supposed to be required. auto.wait boxes (the pet-cry
+        -- ones, home/window.asm AutoTextBoxDrawingCommon) fall through to
+        -- a plain A/B box once done, same as any other dialogue, so they
+        -- keep the protection.
+        if not (opts and opts.auto and not opts.auto.wait) then
+          pcall(keepPageWaits, game, box, text, saved.maxCols)
+        end
+      end
+
       box.dp_art = art
-      box.dp_panelTx = panelTx
-      -- Not throttled: text boxes are rare compared to frames, and the whole
-      -- question is whether a box with art ever coexists with a hud frame
-      -- that can see it. Compare these timestamps against the hud# lines.
-      dlog("TextBox.new style=%q art=%s panelTx=%s -- box built",
-           tostring(style), art and "YES" or "no", tostring(panelTx))
+      box.dp_side = side
       return box
     end
 
     local originalDraw = TextBox.draw
     TextBox.draw = function(self)
       originalDraw(self)
-      if not (self.dp_art and self.dp_panelTx) then return end
+      if not (self.dp_art and self.dp_artX) then return end
       -- A throw here would take the whole frame down, and the box under it is
       -- already drawn correctly. Drop the portrait for this box and carry on.
-      if not pcall(drawInsetPanel, self) then
-        self.dp_art, self.dp_panelTx = nil, nil
+      if not pcall(drawPortrait, self) then
+        self.dp_art, self.dp_artX, self.dp_panelTx = nil, nil, nil
       end
     end
   end
@@ -765,65 +1131,15 @@ return function(mod)
   -- box rather than being called by it.
   mod.hooks:wrap("render.hud", function(next_, game, viewport)
     next_(game, viewport)
-
-    -- Gate-by-gate trace. Throttled to one line per 2s (plus the first three
-    -- frames) so a 60fps hook doesn't write a 100MB log.
-    if DIAG then
-      diagFrames = diagFrames + 1
-      local t = now()
-      if diagFrames <= 3 or (t - diagLogAt) >= 2 then
-        diagLogAt = t
-        local okBox, box = pcall(topTextBox, game)
-        -- Is `game.stack.states` even the right path? INSET would never
-        -- notice if it weren't: speakerFor falls through to the event-based
-        -- lastNpc memory, and battleActive returning false just reads as
-        -- "not in a battle". So dump the stack itself, not just the lookup.
-        local stackInfo = "stack=NIL"
-        pcall(function()
-          local st = game and game.stack
-          if not st then return end
-          local states = st.states
-          if type(states) ~= "table" then
-            stackInfo = string.format("stack=yes states=%s", type(states))
-            return
-          end
-          local parts = {}
-          for i = #states, math.max(1, #states - 3), -1 do
-            local s = states[i] or {}
-            local flags = {}
-            if isA(s, TextBox, "isTextBox") then flags[#flags + 1] = "TextBox" end
-            if s.isOverworld then flags[#flags + 1] = "Overworld" end
-            if isA(s, BattleClass, "isBattle") then flags[#flags + 1] = "Battle" end
-            parts[#parts + 1] = string.format("[%d]%s", i,
-              #flags > 0 and table.concat(flags, "+") or "?")
-          end
-          local topOk, topS = pcall(function() return st.top and st:top() end)
-          stackInfo = string.format("n=%d %s topIsTextBox=%s", #states,
-            table.concat(parts, " "),
-            (topOk and topS and topS.isTextBox) and "yes" or "no")
-        end)
-        dlog("hud#%d style=%q vp=%s topTextBox=%s dp_art=%s | %s",
-             diagFrames, tostring(opt("style", "inset")),
-             viewport and string.format("gameX=%s gameY=%s gameW=%s gameH=%s win=%sx%s",
-               tostring(viewport.gameX), tostring(viewport.gameY),
-               tostring(viewport.gameWidth), tostring(viewport.gameHeight),
-               tostring(viewport.width), tostring(viewport.height)) or "NIL",
-             (okBox and box) and "found" or "none",
-             (okBox and box and box.dp_art) and "yes" or "no",
-             stackInfo)
-      end
-    end
-
     if opt("style", "inset") ~= "margin" then return end
     if not viewport then return end
     local box = topTextBox(game)
     if not (box and box.dp_art) then return end
-    local ok, err = pcall(drawMarginPanel, viewport, box.dp_art)
-    if not ok then dlog("  drawMarginPanel THREW: %s", tostring(err)) end
+    local ok, err = pcall(drawMarginPanel, viewport, box.dp_art, box.dp_side)
+    if not ok then dlog("drawMarginPanel THREW: %s", tostring(err)) end
   end)
 
-  dlog("=== dialogue_portraits loaded, render.hud wrap registered (style=%q) ===",
-       tostring(opt("style", "inset")))
+  dlog("=== dialogue_portraits loaded (style=%q) ===", tostring(opt("style", "inset")))
 
   -- Exported so a companion mod (or a test) can ask the same questions this
   -- one asks, rather than re-deriving them from the world.
