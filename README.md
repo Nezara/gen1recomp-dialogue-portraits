@@ -265,7 +265,6 @@ both layouts, and is used uncropped exactly as supplied.
 
 ## Roadmap
 
-- **Finish the hand-edited portrait pass** — the remaining 22 listed above.
 - **Portraits from later generations.** The obvious gap in this mod is that
   roughly 45 trainer classes have art and everyone else — townsfolk, family,
   shopkeepers, most named story characters — gets nothing, because Gen 1
