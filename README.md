@@ -4,6 +4,9 @@
 A face beside the words. Talk to someone and their portrait appears next to
 the dialogue box.
 
+Idea originally proposed by **Grxpe Ape #TEAMKRIS** (Boi's Club Games Discord)
+— implementation and everything above is this repo's own.
+
 ## Options
 
 | Option | Values | What it does |
