@@ -69,7 +69,7 @@ about Bill.
   and encounters on. Caveat inherited from the save format: it becomes
   permanent when the player next saves.
 - **New art folders**, mirroring the trainer pipeline exactly:
-  `art/pokemon_raw/` (verbatim ROM front sprites, gitignored),
+  `art/pokemon_raw/` (verbatim ROM front sprites),
   `art/pokemon_new/` (grayscale masters, the editable copy),
   `art/pokemon/` (BROWNMON-recolored, what the mod loads). Same
   edit-in-grayscale-recolor-last rule, same one-way recolor.
@@ -78,6 +78,11 @@ about Bill.
   so only 3 of 28 fit the 32x32 slot at 1x. Per-species measurements are in
   `art/pokemon_raw/README.md`. **All 28 wanted species now have hand-drawn
   masters and are recolored into `art/pokemon/`.**
+- **`art/trainers_raw/` and `art/pokemon_raw/` are now versioned, not
+  gitignored** — the verbatim ROM extract behind every portrait here,
+  included so a fork can start hand-editing a master straight away instead
+  of running its own ROM extractor first. See the README's "Assets and
+  licensing" section.
 - Art loading is cached per full path rather than per basename, so the
   trainer and Pokémon folders can't collide on a name.
 

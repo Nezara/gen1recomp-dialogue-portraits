@@ -1,10 +1,13 @@
-# Raw source — do not ship, do not edit
+# Raw source — do not edit
 
 Verbatim copies of `red/assets/generated/battle/front/<name>.png` for the
-species this mod wants a portrait for. Gitignored, exactly like
-`trainers_raw/`, for the same two reasons: reproducible from any Red ROM via
-the engine's own extractor, and a straight copy of Nintendo's art rather than
-a derivative work.
+species this mod wants a portrait for. Reproducible from any Red ROM via the
+engine's own extractor, and a straight copy of Nintendo's art rather than a
+derivative work — versioned anyway (since 1.0.0), so a fork doesn't need its
+own ROM and extractor run just to start hand-editing a master. See
+[`../trainers_raw/README.md`](../trainers_raw/README.md) for the trainer set's
+equivalent, and the root [`README.md`](../../README.md)'s "Assets and
+licensing" section for what that means for this repo.
 
 28 files: the 26 species that have a talking overworld NPC, plus RHYDON and
 KABUTO, which only appear as two of Bill's four possible forms.

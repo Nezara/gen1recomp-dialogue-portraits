@@ -289,8 +289,10 @@ rights to it and has no affiliation with them.
 
 The engine this mod runs on takes the same approach in reverse: it requires
 you to supply your own ROM and extracts its assets on your machine, shipping
-none itself. If you would rather this repo did the same, delete
-`art/trainers/` and regenerate it from your own extract with the script in
-[`art/trainers/README.md`](art/trainers/README.md) — everything needed to
-rebuild the mechanical pass is documented there. What that cannot reproduce
-is the hand-editing, which is why the masters are versioned here.
+none itself. As of 1.0.0 this repo does not follow that lead — `art/trainers_raw/`
+and `art/pokemon_raw/` (the verbatim, un-cropped ROM extract behind every
+portrait here) are versioned too, alongside the derivative work, specifically
+so a fork can start hand-editing a master without its own ROM and extractor
+run first. If you'd rather not carry that, delete those two folders; nothing
+else in the pipeline reads them back out (`art/trainers/README.md` documents
+the script that regenerates them, if you ever need to).
