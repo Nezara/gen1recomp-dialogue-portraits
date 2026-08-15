@@ -24,11 +24,30 @@ up to 32x32 lands at a clean 1x with a pixel or two of padding; past 32 the
 scale goes fractional and the art comes off the pixel grid. 30x30 keeps a
 little breathing room and matches what is already shipping.
 
-Sources are in `../pokemon_raw/` at their original 40x40 / 48x48 / 56x56.
-Only three fit the slot at 1x untouched (`voltorb`, `spearow`, `nidoranf`) —
-the rest need redrawing rather than scaling. `../pokemon_raw/README.md` has
-the per-species measurements and the one composition decision worth making
-before you start.
+Sourced from `red/assets/generated/battle/front/<name>.png` (reproducible
+from any Red ROM via the engine's own extractor — not versioned in this repo;
+see the root README's "Assets and licensing"), at their original 40x40 /
+48x48 / 56x56. Unlike the trainer set's uniform 56x56, Pokémon front art
+isn't one size, and the creature fills nearly all of it — there's no body to
+crop away the way there is on a trainer. Measured content bounding boxes
+against the 32x32 slot:
+
+| | |
+|---|---|
+| Fit at 1x, no scaling needed | `voltorb` (25x25), `spearow` (32x32), `nidoranf` (31x26) |
+| Near miss, 0.8–0.97x | `pidgey`, `nidoranm`, `jigglypuff`, `clefairy`, `meowth`, `cubone`, `psyduck`, `pikachu`, `slowpoke`, `machop`, `doduo`, `kabuto` |
+| Half size, 0.57–0.73x | `slowbro`, `lapras`, `snorlax`, `kangaskhan`, `rhydon`, `pidgeot`, `fearow`, `poliwrath`, `machoke`, `chansey`, `seel`, `wigglytuff`, `nidorino` |
+
+Any of those fractional scales lands the pixel grid off whole pixels, which is
+what `blitArt` avoids by only flooring a scale of 1 or more — so all but the
+three above want a hand pass, not a script.
+
+Worth deciding once, before drawing 27 of them: **a Pokémon's whole silhouette
+is what identifies it**, so the trainer set's "crop to a head-and-shoulders
+bust" instinct probably does not transfer. A shrunk-but-whole creature is
+likely to read better than a cropped head, except for the few big ones
+(Lapras, Kangaskhan, Rhydon) where the head alone might be the stronger
+picture. Try both on one species before committing to a rule.
 
 ## What's wanted
 

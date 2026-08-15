@@ -166,7 +166,7 @@ hand-edited masters.**
 
 The 28 Pokémon portraits (26 species with a talking overworld NPC, plus
 Bill's two extra forms) are hand-drawn from the start — the trainer set's
-batch crop doesn't transfer to creature art, see `art/pokemon_raw/README.md`
+batch crop doesn't transfer to creature art, see `art/pokemon_new/README.md`
 for why — and **all 28 are in.**
 
 ### How the art pipeline works
@@ -307,12 +307,17 @@ matter and worth being clear about: it is **derived from the Pokémon Red ROM**
 Nintendo / Game Freak / Creatures Inc. property, and this project claims no
 rights to it and has no affiliation with them.
 
-The engine this mod runs on takes the same approach in reverse: it requires
-you to supply your own ROM and extracts its assets on your machine, shipping
-none itself. As of 1.0.0 this repo does not follow that lead — `art/trainers_raw/`
-and `art/pokemon_raw/` (the verbatim, un-cropped ROM extract behind every
-portrait here) are versioned too, alongside the derivative work, specifically
-so a fork can start hand-editing a master without its own ROM and extractor
-run first. If you'd rather not carry that, delete those two folders; nothing
-else in the pipeline reads them back out (`art/trainers/README.md` documents
-the script that regenerates them, if you ever need to).
+The engine this mod runs on takes the same approach: it requires you to
+supply your own ROM and extracts its assets on your machine, shipping none
+itself. This repo follows that lead too — only the derivative work (the
+hand-edited, recolored masters and the portraits built from them) is
+versioned here. The verbatim, un-cropped ROM extract those masters started
+from is **not** shipped; `art/trainers/README.md` and `art/pokemon_new/
+README.md` document the extractor path and the regeneration script for
+anyone starting a fork from scratch.
+
+(Versions 1.0.0 and 1.0.1 briefly shipped that raw extract too, for a fork's
+convenience. Reconsidered on a second look at the licensing question — a
+straight, un-cropped copy of Nintendo's own art is a meaningfully different
+thing to distribute than a cropped, recolored, hand-edited derivative, even
+though both ultimately trace back to the same ROM. Removed in 1.0.3.)

@@ -2,6 +2,13 @@
 # of the pipeline, not versioned.
 art/trainer fixed/
 
+# Verbatim, un-cropped ROM extracts -- straight copies of Nintendo's own
+# art, not a derivative work. Shipped in 1.0.0/1.0.1, removed in 1.0.3 (see
+# README.md's "Assets and licensing"). Kept locally for regeneration, never
+# versioned again.
+art/trainers_raw/
+art/pokemon_raw/
+
 # OS junk
 Thumbs.db
 desktop.ini

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.3
+
+- **Removed `art/trainers_raw/` and `art/pokemon_raw/`** — the verbatim,
+  un-cropped ROM extracts those two folders held (shipped since 1.0.0) are a
+  straight copy of Nintendo's own art, not a derivative work, unlike the
+  cropped/recolored/hand-edited masters and portraits actually built from
+  them. On a second look at the licensing question, distributing that raw
+  copy isn't something this repo wants to keep doing, even though both
+  ultimately trace back to the same ROM. Nothing else in the pipeline reads
+  these back out — `art/trainers/README.md` and `art/pokemon_new/README.md`
+  document the extractor path and regeneration script for a fork starting
+  from scratch, same as the engine's own "bring your own ROM" approach.
+  Now gitignored rather than removed-and-forgettable, so they can't drift
+  back in by accident.
+- **Fixed a leftover reference to the pre-1.0.2 `portraits/` folder name**
+  in `art/pokemon/README.md` — missed when the rest of the repo moved to
+  `CustomArt/`.
+
 ## 1.0.2
 
 - **Custom art folder renamed `portraits/` → `CustomArt/`.** No release has

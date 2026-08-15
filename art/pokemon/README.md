@@ -13,7 +13,7 @@ masters, never these. The script and the palette values are in
 their final size.
 
 All 28 wanted species (see `../pokemon_new/README.md`) are in. The art was
-drawn by hand (see `../pokemon_raw/README.md` for why it can't be batched the
+drawn by hand (see `../pokemon_new/README.md` for why it can't be batched the
 way the 45 trainers were) and then run through the same recolor-only pass.
 Each file is still loaded independently with the miss cached, so if more
 species masters land later they light up the same way, one at a time.
@@ -35,5 +35,5 @@ in `game.data.pokemon`, and the ROM has answered. Three names the ROM doesn't
 spell as a species key are hand-mapped in `main.lua`'s `MON_NAME_FIX`.
 
 A player who wants to override one of these, or add a portrait for a species
-with no NPC at all, can still drop `portraits/<SPECIES>.png` in the mod root —
+with no NPC at all, can still drop `CustomArt/<SPECIES>.png` in the mod root —
 that path wins over everything, including this folder.
