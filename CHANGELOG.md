@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.0.2
+
+- **Custom art folder renamed `portraits/` → `CustomArt/`.** No release has
+  ever shipped the old name, so there's nothing to migrate. All three code
+  paths and every doc reference moved together.
+- **`CustomArt/README.md` added** — full how-to (naming, precedence, a
+  caveat about sprite-level overrides reaching into shared trainer battles)
+  plus two reference tables sourced straight from this game's own extracted
+  data: all 45 battle trainer classes with the overworld sprite each one
+  walks around on, and all 53 other humanoid NPC sprites in the game with
+  whether they already have a built-in portrait — 22 do, 31 don't yet.
+- **Portrait size documented as 30x30** — the size the built-in art ships
+  at and the size that lands on a clean 1x scale in INSET's/FRAMED's 32x32
+  slot. Other sizes still work (auto-scaled, centred) but 30x30 is the one
+  to draw at.
+
+## 1.0.1
+
+Two reported bugs, and the experimental flag comes off.
+
+- **No longer flagged experimental.** `manifest.json` drops
+  `"experimental": true`.
+- **Fixed: the portrait changed sides after you answered a question.**
+  Reported on Viridian's old man, and his script is the clearest case of it:
+  `face_player`, `ask` the coffee question, then the boxes that follow the
+  answer (`TEXT_VIRIDIANCITY_OLD_MAN`, `data/scripts/story.lua`). Two things
+  were wrong. A box carrying `opts.choice` was forced to the left on the
+  belief that the YES/NO box comes down over a right-hand portrait — it does
+  not, and never did: `Theme.choiceBox` is `{ tx = 14, ty = 7, tw = 6,
+  th = 5 }`, rows 7–11, while every portrait this mod draws lives in the
+  dialogue box's own rows 12–17. The two stack, they never overlap, and both
+  anchor `"bottom"` so DYNAMIC UI layout moves them together. That force is
+  gone. And the side is now resolved **once per conversation** instead of
+  once per box, so a script that turns somebody around or walks the player a
+  step between two boxes can't slide the face across the screen either. It
+  is re-asked when the speaker changes, when the conversation ends, or when
+  the `SIDE` option is changed.
+- **Fixed: the last person you talked to turned up on messages that aren't
+  theirs.** The 15-second speaker memory had a clock but no boundaries, and
+  the facing-cell lookup had no idea a menu was up. Two of them added:
+  - **Walking away ends the conversation** (`world.stepped`, ignored while a
+    script is running, since a cutscene walking you into position is part of
+    one). This is what put a face on Viridian's step-triggered "This is
+    private property!", and on REPEL wearing off.
+  - **A menu is not somebody talking.** The BAG, the START menu's save
+    prompts, the PC, the party menu, MoveLearn, the trade and evolution
+    animations, the slot machine and the Pokédex all push perfectly ordinary
+    text boxes, and the speaker lookup answered them the same way it answers
+    a talk. `TextBox.new` now checks the stack it is being built on: the
+    world guess only runs when the overworld — or another text box and its
+    YES/NO box — is what pushed this one. Text that names its own speaker
+    (`"OAK: "`) is untouched by this and still resolves anywhere.
+
 ## 1.0.0
 
 Portraits for the Pokémon standing around in towns and houses, and a decision

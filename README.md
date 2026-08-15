@@ -18,9 +18,10 @@ Idea originally proposed by **Grxpe Ape #TEAMKRIS** (Boi's Club Games Discord)
 your left, so that is the side of the screen they are on and the side their
 face goes. Facing up or down says nothing either way — they're straight ahead —
 so that case puts them on whichever side of you their tile actually is, and
-falls back to the left when even that is a tie. A YES/NO prompt always keeps
-the portrait on the left, because the YES/NO box itself comes down over the
-right of the screen.
+falls back to the left when even that is a tie. It is decided once per
+conversation, not once per box, so a script that turns somebody around or
+walks you a step while it talks can't slide the face across the screen
+mid-sentence.
 
 Portraits are an overworld feature. A trainer's pre- and post-battle speech
 both happen out in the overworld — the battle pushes after the challenge and
@@ -196,20 +197,30 @@ The regeneration script and the exact palette values are in
 
 ## Custom art
 
-Drop PNGs in a `portraits/` folder inside this mod, named after either the
+Drop PNGs in the `CustomArt/` folder inside this mod, named after either the
 trainer class or the overworld sprite:
 
 ```
-portraits/OPP_BROCK.png
-portraits/SPRITE_OAK.png
-portraits/SPRITE_NURSE.png
+CustomArt/OPP_BROCK.png
+CustomArt/SPRITE_OAK.png
+CustomArt/SPRITE_NURSE.png
 ```
 
 This is the way to give a portrait to anyone the mod doesn't cover on its own
-— Mom, a gym guide, any NPC with no battle art. Any size works — it's centred
-and scaled to fit, snapping to a whole scale whenever it fits at one. Trainer
-class is checked first, then sprite. Custom art beats everything else, in
-both layouts, and is used uncropped exactly as supplied.
+— Mom, a gym guide, any NPC with no battle art. **Portraits should be 30x30
+pixels** — that's the size the built-in art ships at, and it's what lands on
+a clean 1x scale inside INSET's/FRAMED's 32x32 slot with a pixel of padding
+either side. Other sizes are still accepted and auto-scaled to fit, centred
+and snapped to a whole multiple whenever one fits, but past 32x32 the scale
+goes fractional and pixel art comes off the grid. Trainer class is checked
+first, then sprite. Custom art beats everything else, in every layout, and is
+used uncropped exactly as supplied.
+
+**`CustomArt/README.md`** has the full how-to plus two reference tables: every
+trainer class and the overworld sprite it walks around on, and every
+non-battle NPC sprite in the game with whether it already has a portrait —
+so it's easy to see at a glance what's already covered and what's worth
+drawing next.
 
 ## How the speaker is identified
 
@@ -226,7 +237,7 @@ both layouts, and is used uncropped exactly as supplied.
    `art/trainers/README.md` and `main.lua`'s `NAME_ART` table) — most named
    speakers in this game are one-off narrative characters (BILL, MR.FUJI,
    a ship's CAPTAIN) with no battle portrait to give them; drop one in
-   `portraits/<NAME>.png` (plain name, no `SPRITE_`/`OPP_` prefix) to add
+   `CustomArt/<NAME>.png` (plain name, no `SPRITE_`/`OPP_` prefix) to add
    more.
 2. **The running map script's own NPC**, when the text named nobody and a
    script is active. A scripted conversation is handed its NPC by the
@@ -238,6 +249,13 @@ both layouts, and is used uncropped exactly as supplied.
 4. **The last NPC the engine announced**, remembered for 15 seconds, for
    anything none of the above catches — a script that auto-triggers with
    no NPC of its own, say.
+
+Steps 2–4 answer for the world, so they only get asked about the world's own
+dialogue. Reading a sign, walking away, or opening a menu each end the
+conversation, and a text box the BAG, the PC, the party menu or a trade
+animation put up is not somebody talking to you — none of those inherit the
+face of whoever you spoke to last. Step 1 is unaffected: text that names its
+own speaker is trusted wherever it appears.
 
 ## Known limits
 
@@ -256,7 +274,6 @@ both layouts, and is used uncropped exactly as supplied.
   that or hands off between two characters.
 - **Portrait is per box, not per page.** A single box that breaks into several
   pages keeps one portrait throughout, even if the writing changes speaker.
-  The side is fixed per box for the same reason.
 - **A narrowed box still has to break a word longer than its line.** Counting
   across the whole game's dialogue: 25 words get cut mid-way at INSET's 14
   columns, 40 at its 13 (portrait on the right), 88 at FRAMED's 12. The ones
@@ -272,9 +289,10 @@ both layouts, and is used uncropped exactly as supplied.
   roughly 45 trainer classes have art and everyone else — townsfolk, family,
   shopkeepers, most named story characters — gets nothing, because Gen 1
   simply has no picture of them to use. Later games do have that art, and
-  dropping it in `portraits/` already works today for anyone who wants to
-  do it by hand. The intent is to ship a curated set so the common NPCs
-  (Mom, nurses, mart clerks, gym guides) have a face out of the box.
+  dropping it in `CustomArt/` already works today for anyone who wants to
+  do it by hand — see `CustomArt/README.md` for exactly which sprites still
+  need one. The intent is to ship a curated set so the common NPCs (Mom,
+  nurses, mart clerks, gym guides) have a face out of the box.
 - **Post-battle speaker memory.** `MEMORY_SECONDS` is measured from trainer
   engagement, which has always expired by the time a battle ends — post-battle
   lines currently rely on the running script's own NPC and the facing cell

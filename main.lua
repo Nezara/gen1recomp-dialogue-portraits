@@ -45,6 +45,15 @@
 -- (real engine events, not internals) are a last-resort memory: the most
 -- recent NPC either announced, remembered for MEMORY_SECONDS.
 --
+-- A memory needs boundaries more than it needs a timer, or it starts putting
+-- the last person you spoke to on text that has nothing to do with them.
+-- Three of them, each for a different way out of a conversation: reading a
+-- sign or a bookshelf instead (interactDepth, below), WALKING AWAY
+-- (world.stepped -- Viridian's "This is private property!" is triggered by a
+-- step and speaks for nobody), and a MENU taking over the screen
+-- (worldDialogue -- the BAG, the PC and the party menu all push ordinary
+-- text boxes of their own, and none of them is an npc talking).
+--
 -- ------- which picture
 --
 -- Only the ROM's own battle art counts as a portrait, cropped to a square
@@ -55,7 +64,7 @@
 -- hand-checked sprite -> class table. Everyone else gets no portrait, on
 -- purpose: the alternative was cropping their own overworld sprite's face,
 -- which is a worse picture of them, not a better fallback. A player who
--- wants one drawn can drop it in portraits/ (see README) and it wins over
+-- wants one drawn can drop it in CustomArt/ (see README) and it wins over
 -- everything else -- for a sprite with no battle art at all as much as for
 -- overriding one that has it.
 --
@@ -189,7 +198,7 @@ local NAMED_PIC = {
 -- Deliberately short: most speaker-naming in this game's text belongs to
 -- narrative-only characters with no trainer battle art at all (BILL,
 -- MR.FUJI, the PA system, a ship's CAPTAIN, ...) -- worth a custom
--- portraits/<NAME>.png for anyone who wants one (see README), but nothing
+-- CustomArt/<NAME>.png for anyone who wants one (see README), but nothing
 -- this mod can source and ship a default for.
 local NAME_ART = {
   OAK = "prof.oak",
@@ -275,18 +284,40 @@ return function(mod)
 
   local lastNpc, lastNpcAt = nil, -math.huge
 
+  -- The last game handle seen, for the event listeners below -- world.stepped
+  -- carries a map/cell payload and no game of its own.
+  local gameRef
+
+  -- The side this conversation settled on; see stickySide.
+  local sideMemo = nil
+
   local function now()
     return (love and love.timer and love.timer.getTime and love.timer.getTime()) or 0
   end
+
+  -- "The conversation is over": everything remembered about who was talking
+  -- goes at once, the side included. Splitting the two lets a stale side
+  -- outlive the speaker it was resolved for.
+  local function forgetSpeaker()
+    lastNpc, lastNpcAt = nil, -math.huge
+    sideMemo = nil
+  end
+
+  mod.events:on("game.ready", function(ev)
+    if ev and ev.game then gameRef = ev.game end
+  end)
 
   mod.events:on("world.interacted", function(ev)
     -- kind is "npc" | "sign" | ... ; a sign is not a speaker, and landing here
     -- for one is how a portrait gets cleared when you walk off and read a
     -- bookshelf instead.
     if ev and ev.kind == "npc" and ev.target then
+      -- A fresh A-press on somebody else is a new conversation even when the
+      -- two wear the same face (two LASSes in a row), so the side is re-asked.
+      if ev.target ~= lastNpc then sideMemo = nil end
       lastNpc, lastNpcAt = ev.target, now()
     else
-      lastNpc, lastNpcAt = nil, -math.huge
+      forgetSpeaker()
     end
   end)
 
@@ -336,6 +367,33 @@ return function(mod)
     local ctx = runner.ctx
     return ctx and ctx.npc or nil
   end
+
+  local function scriptRunning(game)
+    local ow = overworldOf(game)
+    local runner = ow and ow.runner
+    if not (runner and runner.isRunning) then return false end
+    local ok, running = pcall(runner.isRunning, runner)
+    return (ok and running) and true or false
+  end
+
+  -- Walking away ends the conversation.
+  --
+  -- MEMORY_SECONDS on its own is a clock, not a boundary. Talk to somebody,
+  -- walk off, and step onto a cell that shows text with no npc behind it --
+  -- Viridian's "This is private property!" is exactly that shape, the
+  -- VIRIDIAN_CITY.onStep in data/scripts/story.lua pushing a TextBox
+  -- directly -- and the box wears the face of whoever you were talking to
+  -- seconds ago. Nothing else in the pipeline catches it: no interaction is
+  -- in flight for interactDepth to see, and the memory is doing exactly what
+  -- it was built to do.
+  --
+  -- A step the player takes under their OWN control ends the conversation, so
+  -- the memory goes there. A step made BY a script (move_player, a cutscene
+  -- walking you into position) is part of one and keeps it -- which is the
+  -- whole reason the memory exists.
+  mod.events:on("world.stepped", function()
+    if not scriptRunning(gameRef) then forgetSpeaker() end
+  end)
 
   -- Is an A-press interaction resolving right now?
   --
@@ -390,7 +448,13 @@ return function(mod)
     mod.events:on("game.ready", function() pcall(wrapInteract) end)
   end
 
-  local function speakerFor(game)
+  -- `worldOk == false` means the box being built is not part of the world's
+  -- conversation layer at all (a menu pushed it -- see worldDialogue), so
+  -- there is nobody out there to find and every answer below would be a
+  -- leak. Defaults to true for any caller that doesn't ask, mod.exports
+  -- included.
+  local function speakerFor(game, worldOk)
+    if worldOk == false then return nil end
     local ok, npc = pcall(scriptNpc, game)
     if ok and npc then return npc end
     ok, npc = pcall(facingNpc, game)
@@ -406,7 +470,9 @@ return function(mod)
     return nil
   end
 
-  -- Which side of the box the portrait belongs on, resolved per box.
+  -- Which side of the box the portrait belongs on, read off the world as it
+  -- stands right now. Asked once per conversation rather than once per box --
+  -- stickySide, below, owns that.
   local function sideFor(game, npc)
     local side = opt("side", "auto")
     if side ~= "auto" then return side end
@@ -422,6 +488,37 @@ return function(mod)
       if npc.cellX > player.cellX then return "right" end
     end
     return "left"
+  end
+
+  -- The side belongs to the CONVERSATION, not to the box.
+  --
+  -- sideFor reads the world as it stands at this instant, and a script moves
+  -- the world while it talks. Viridian's old man is the reported case: his
+  -- rows (TEXT_VIRIDIANCITY_OLD_MAN, data/scripts/story.lua) open with
+  -- `face_player`, `ask` the coffee question, and only then show the boxes
+  -- that follow the answer -- built from a later frame than the one that
+  -- opened the conversation, with the YES/NO box's own pop and the demo
+  -- battle in between. Resolved per box, that let his portrait hop from one
+  -- side of the screen to the other mid-conversation.
+  --
+  -- So resolve it once for a run of boxes wearing the same face and reuse it.
+  -- It falls out of use when the speaker changes (a different face asks a
+  -- different question), when the conversation ends (forgetSpeaker: a step, a
+  -- sign, an A press that landed on nothing), or when the player changes the
+  -- SIDE option out from under it. The timeout is measured from the LAST box,
+  -- not the first, so a long conversation never ages out mid-way.
+  local function stickySide(game, npc, art)
+    local want = opt("side", "auto")
+    local t = now()
+    if sideMemo and sideMemo.art == art and sideMemo.opt == want
+       and (t - sideMemo.at) <= MEMORY_SECONDS then
+      sideMemo.at = t
+      return sideMemo.side
+    end
+    local ok, resolved = pcall(sideFor, game, npc)
+    local side = (ok and resolved) or "left"
+    sideMemo = { art = art, opt = want, side = side, at = t }
+    return side
   end
 
   -- ------- art
@@ -444,7 +541,7 @@ return function(mod)
     local hit = customCache[id]
     if hit ~= nil then return hit or nil end
     local ok, image = pcall(function()
-      return mod.assets:image("portraits/" .. id .. ".png")
+      return mod.assets:image("CustomArt/" .. id .. ".png")
     end)
     if not ok or not image then
       customCache[id] = false
@@ -466,7 +563,7 @@ return function(mod)
 
   -- Loads this mod's own pre-baked crop (see the header comment on why the
   -- crop is baked rather than computed here) through mod.assets:image, same
-  -- path a player's own portraits/ override goes through -- just a
+  -- path a player's own CustomArt/ override goes through -- just a
   -- different folder, so both land in a plain, uncached-miss-safe art
   -- record with no Quad or engine Assets reach involved.
   --
@@ -680,7 +777,7 @@ return function(mod)
     -- A talking POKEMON answers first and most specifically -- its species is
     -- written on the object, while its SPRITE is one of five shared by
     -- everything from SPEAROW to MOLTRES. Still falls through if nobody has
-    -- drawn that species yet, so a sprite-level portraits/ override keeps
+    -- drawn that species yet, so a sprite-level CustomArt/ override keeps
     -- working the way it always did.
     local species = speciesOf(game, def)
     local monPortrait = species and (customArt(species) or monArt(game, species))
@@ -760,6 +857,49 @@ return function(mod)
       if isA(states[i], TextBox, "isTextBox") then return states[i] end
     end
     return nil
+  end
+
+  local ChoiceBox
+  do
+    local ok, klass = pcall(require, "src.ui.ChoiceBox")
+    if ok then ChoiceBox = klass end
+  end
+
+  -- Is the box about to be built part of the world's conversation layer?
+  --
+  -- A TextBox is not only ever a person talking to you. The BAG's "It won't
+  -- have any effect", the START menu's save prompts, the PC, the party menu,
+  -- MoveLearn, the trade and evolution animations, the slot machine and the
+  -- Pokedex all push perfectly ordinary text boxes of their own -- and the
+  -- speaker lookup has no idea, so it answers them the same way it answers a
+  -- talk: with whoever the player is standing in front of, or whoever they
+  -- were last talking to. That is the "the last person I talked to turns up
+  -- on messages that have no business wearing a face" report, and it needs
+  -- no walking around to reproduce -- talk to somebody, open the BAG right
+  -- there, and use anything.
+  --
+  -- The stack says which it is. At the moment TextBox.new runs its box has
+  -- NOT been pushed yet, so whatever is on top is whatever is pushing it: for
+  -- world dialogue that is the overworld itself, or at most another text box
+  -- (a `stay` box left underneath, the Viridian school blackboard) and the
+  -- YES/NO ChoiceBox riding on one. Anything else above the overworld is a
+  -- menu that has taken over the screen, and no npc on the map is speaking
+  -- through it.
+  --
+  -- Only the world guess is gated on this. A name the ROM wrote into the text
+  -- itself ("OAK: ") is still trusted wherever it appears, because it names
+  -- its speaker outright instead of inferring one.
+  local function worldDialogue(game)
+    local states = game and game.stack and game.stack.states
+    if not states then return false end
+    for i = #states, 1, -1 do
+      local state = states[i]
+      if type(state) == "table" and state.isOverworld then return true end
+      if not (isA(state, TextBox, "isTextBox") or isA(state, ChoiceBox)) then
+        return false
+      end
+    end
+    return false -- no overworld under it at all: an intro, a title screen
   end
 
   -- ------- drawing
@@ -1034,7 +1174,11 @@ return function(mod)
       local style = opt("style", "inset")
       local art, speaker
       if style ~= "off" and game and allowed(game) then
-        speaker = speakerFor(game)
+        gameRef = game
+        -- On a throw, fall back to the old always-guess behaviour rather than
+        -- silently dropping every portrait.
+        local okWorld, isWorld = pcall(worldDialogue, game)
+        speaker = speakerFor(game, (not okWorld) or isWorld)
         -- The text's own "NAME: " wins when it's there, even down to
         -- deciding "no portrait" -- see nameArt's comment on why a stale
         -- npc guess is worse than trusting that. Only when the text names
@@ -1050,13 +1194,21 @@ return function(mod)
 
       local side
       if art then
-        local okSide, resolved = pcall(sideFor, game, speaker)
+        -- Once per conversation, not once per box -- see stickySide.
+        --
+        -- Up to 1.0.0 an `opts.choice` box was also forced to the left, on
+        -- the belief that the YES/NO box came down over a right-hand
+        -- portrait. It does not: Theme.choiceBox is { tx = 14, ty = 7,
+        -- tw = 6, th = 5 }, rows 7-11, and every portrait this mod draws
+        -- sits in the dialogue box's own rows 12-17 (INSET's slot is
+        -- boxTy+1 down, FRAMED's panel is the box's full height, MARGIN is
+        -- outside the screen entirely). They stack, they never overlap --
+        -- and both boxes anchor "bottom", so DYNAMIC UI layout moves the
+        -- pair together rather than closing the gap. All that force ever
+        -- did was put the old man's face on the left to ask the question
+        -- and on the right to answer it.
+        local okSide, resolved = pcall(stickySide, game, speaker, art)
         side = (okSide and resolved) or "left"
-        -- A YES/NO box is anchored at Theme.choiceBox.tx = 14 and comes down
-        -- over the still-visible text (TextBox opts.choice). On the right
-        -- that lands exactly on the portrait, so a box that will ask a
-        -- question keeps its art on the left whatever the option says.
-        if opts and opts.choice then side = "left" end
       end
 
       -- Swap the geometry for exactly the length of the constructor. TextBox
