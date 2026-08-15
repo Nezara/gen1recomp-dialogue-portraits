@@ -41,7 +41,7 @@ The cost is four columns of text: lines wrap at 14 characters instead of 18
 blinking ▼), so conversations run to more pages.
 
 ### FRAMED
-<img width="1015" height="763" alt="hey wait3" src="https://github.com/user-attachments/assets/2d589cde-55b2-4174-b2c3-e004befc8539" />
+<img width="1015" height="763" alt="hey wait2" src="https://github.com/user-attachments/assets/db42ebae-be54-4b6e-9649-08f3f046c694" />
 
 The same idea with a border of its own: a separate 6x6 Game Boy panel standing
 beside the dialogue box, rather than art sharing the box's frame. Same 32x32
@@ -64,7 +64,7 @@ for A before scrolling, the same as the ROM's own multi-page text does, rather
 than sliding a line away on the typewriter's clock before you've read it.
 
 ### MARGIN
-<img width="1015" height="763" alt="hey wait2" src="https://github.com/user-attachments/assets/db42ebae-be54-4b6e-9649-08f3f046c694" />
+<img width="1015" height="763" alt="hey wait3" src="https://github.com/user-attachments/assets/2d589cde-55b2-4174-b2c3-e004befc8539" />
 
 Paints the portrait out in the letterbox beside the play area, so the dialogue
 box keeps all 18 columns. It always draws at the same pixel scale as the game
