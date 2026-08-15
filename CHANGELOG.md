@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.3
+## 1.0.2
 
 - **Removed `art/trainers_raw/` and `art/pokemon_raw/`** — the verbatim,
   un-cropped ROM extracts those two folders held (shipped since 1.0.0) are a
@@ -14,15 +14,10 @@
   from scratch, same as the engine's own "bring your own ROM" approach.
   Now gitignored rather than removed-and-forgettable, so they can't drift
   back in by accident.
-- **Fixed a leftover reference to the pre-1.0.2 `portraits/` folder name**
-  in `art/pokemon/README.md` — missed when the rest of the repo moved to
-  `CustomArt/`.
-
-## 1.0.2
-
 - **Custom art folder renamed `portraits/` → `CustomArt/`.** No release has
   ever shipped the old name, so there's nothing to migrate. All three code
-  paths and every doc reference moved together.
+  paths and every doc reference moved together (including one in
+  `art/pokemon/README.md` that was easy to miss).
 - **`CustomArt/README.md` added** — full how-to (naming, precedence, a
   caveat about sprite-level overrides reaching into shared trainer battles)
   plus two reference tables sourced straight from this game's own extracted

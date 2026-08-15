@@ -1,7 +1,7 @@
 {
   "id": "dialogue_portraits",
   "name": "Dialogue Portraits",
-  "version": "1.0.3",
+  "version": "1.0.2",
   "github": "Nezara/gen1recomp-dialogue-portraits",
   "api": 2,
   "entry": "main.lua",

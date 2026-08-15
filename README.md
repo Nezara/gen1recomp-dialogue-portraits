@@ -323,4 +323,4 @@ anyone starting a fork from scratch.
 convenience. Reconsidered on a second look at the licensing question — a
 straight, un-cropped copy of Nintendo's own art is a meaningfully different
 thing to distribute than a cropped, recolored, hand-edited derivative, even
-though both ultimately trace back to the same ROM. Removed in 1.0.3.)
+though both ultimately trace back to the same ROM. Removed in 1.0.2.)
