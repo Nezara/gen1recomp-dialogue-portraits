@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.3
+
+- gen1recomp's mod sandbox stopped allowing `love.filesystem` (the DIAG debug
+  log, off by default, was the only use — `CustomArt/` already went through
+  `mod.assets:image`, unaffected). Rewritten onto `mod.storage`, which needs a
+  live game to resolve, so the logger now buffers in memory until one exists
+  (`gameRef`, already tracked from `game.ready`/`TextBox.new`). No gameplay
+  change -- this only affects where the diagnostic log file lives if DIAG is
+  ever flipped on.
+
 ## 1.0.2
 
 - **Removed `art/trainers_raw/` and `art/pokemon_raw/`** — the verbatim,

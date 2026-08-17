@@ -934,18 +934,51 @@ return function(mod)
   -- marker, fixed there -- and has been removed rather than left writing a
   -- line every two seconds forever. What is left is the two places a failure
   -- is otherwise completely silent (a throw inside a pcall'd draw, and the
-  -- load line that says the entry chunk got this far). Flip DIAG to true and
-  -- the log lands in <savedir>/dialogue_portraits.log.
+  -- load line that says the entry chunk got this far).
+  --
+  -- gen1recomp's mod sandbox no longer exposes love.filesystem at all (the
+  -- engine author: mods that touch it stop loading outright in the next
+  -- release, with no permission that reopens it). Flip DIAG to true and the
+  -- log now goes through mod.storage instead, which needs a live game to
+  -- resolve its playthrough -- gameRef (set from game.ready and from every
+  -- TextBox.new call above) is that handle. Read it at
+  -- <savedir>/mod_storage/<version>/<playthroughId>/dialogue_portraits/log.bin.
   local DIAG = false
+  local DLOG_KEY = "log"
+  local DLOG_MAX_BYTES = 64 * 1024
+  local dlogBuf, dlogBytes, dlogLoaded = {}, 0, false
 
   local function dlog(fmt, ...)
     if not DIAG then return end
     local ok, line = pcall(string.format, fmt, ...)
     if not ok then line = tostring(fmt) end
-    pcall(function()
-      love.filesystem.append("dialogue_portraits.log",
-        os.date("!%H:%M:%S ") .. line .. "\n")
+    local entry = os.date("!%H:%M:%S ") .. line .. "\n"
+    dlogBuf[#dlogBuf + 1] = entry
+    dlogBytes = dlogBytes + #entry
+    while dlogBytes > DLOG_MAX_BYTES * 2 and #dlogBuf > 1 do
+      dlogBytes = dlogBytes - #dlogBuf[1]
+      table.remove(dlogBuf, 1)
+    end
+    if not gameRef then return end
+    local okCtx, ctx = pcall(function() return mod.storage:context(gameRef) end)
+    if not (okCtx and ctx) then return end -- no playthrough resolved yet
+    if not dlogLoaded then
+      -- carry the previous session's tail across so the log stays continuous
+      local okPrev, prev = pcall(function()
+        return mod.storage:readBytes(gameRef, DLOG_KEY)
+      end)
+      dlogLoaded = true
+      if okPrev and type(prev) == "string" and prev ~= "" then
+        table.insert(dlogBuf, 1, prev)
+        dlogBytes = dlogBytes + #prev
+      end
+    end
+    local body = table.concat(dlogBuf)
+    if #body > DLOG_MAX_BYTES then body = body:sub(-DLOG_MAX_BYTES) end
+    local okWrite = pcall(function()
+      return mod.storage:writeBytes(gameRef, DLOG_KEY, body)
     end)
+    if okWrite then dlogBuf, dlogBytes = { body }, #body end
   end
 
   -- Where the art goes and what the text keeps, for whichever of the two
